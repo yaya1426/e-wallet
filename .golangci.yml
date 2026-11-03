@@ -1,0 +1,103 @@
+# golangci-lint v2 configuration (version pinned in the Makefile and CI).
+version: "2"
+
+run:
+  build-tags:
+    - integration
+    - e2e
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - depguard
+    - errcheck
+    - errorlint
+    - forbidigo
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - nolintlint
+    - revive
+    - staticcheck
+    - unused
+  settings:
+    depguard:
+      rules:
+        # internal/platform holds shared technical building blocks and must not depend on
+        # business modules (TDR-001, architecture §3.2).
+        platform-no-business:
+          files:
+            - "**/internal/platform/**"
+          deny:
+            - pkg: github.com/yaya1426/e-wallet/internal/identity
+              desc: platform must not import business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/wallet
+              desc: platform must not import business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/ledger
+              desc: platform must not import business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/transaction
+              desc: platform must not import business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/payment
+              desc: platform must not import business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/transfer
+              desc: platform must not import business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/idempotency
+              desc: platform must not import business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/outbox
+              desc: platform must not import business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/webhook
+              desc: platform must not import business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/reconciliation
+              desc: platform must not import business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/bank
+              desc: platform must not import business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/banksim
+              desc: platform must not import business modules
+    forbidigo:
+      forbid:
+        # Money is int64 piasters; floats are forbidden in money code (TDR-003).
+        # Scoped to the money packages by the exclusion rule below.
+        - pattern: ^float(32|64)$
+          msg: money is int64 piasters; floats are forbidden here (TDR-003)
+        - pattern: ^strconv\.ParseFloat$
+          msg: money is int64 piasters; floats are forbidden here (TDR-003)
+      analyze-types: true
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+        - name: receiver-naming
+        - name: error-naming
+        - name: error-strings
+        - name: error-return
+        - name: errorf
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: indent-error-flow
+        - name: increment-decrement
+        - name: range
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: unused-parameter
+        - name: blank-imports
+  exclusions:
+    rules:
+      - linters: [forbidigo]
+        path-except: internal/(ledger|wallet|payment|transfer|platform/money)/
+      - linters: [gosec]
+        path: _test\.go
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/yaya1426/e-wallet

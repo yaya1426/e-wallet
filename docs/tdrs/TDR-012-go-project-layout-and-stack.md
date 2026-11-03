@@ -66,7 +66,7 @@ Handlers → service → repository. Handlers never touch the DB. Other modules 
 ### 3. Stack
 | Concern | Choice |
 |---------|--------|
-| Go version | **Go 1.25**: `go 1.25` + `toolchain go1.25.4` in `go.mod`; CI uses `go-version-file: go.mod` (decided in T001) |
+| Go version | **Go 1.27**: `go 1.27` + `toolchain go1.27.3` in `go.mod`; CI uses `go-version-file: go.mod` (decided in T001; first chosen 1.25, changed to 1.27 during T001 implementation because 1.25 is end-of-life and current dependencies need ≥ 1.26) |
 | Module path | `github.com/yaya1426/e-wallet` (decided in T001) |
 | CLI | stdlib `flag` with a sub-command switch (`serve`, `migrate`, later `reconcile`). No CLI framework. |
 | HTTP router | **stdlib `net/http`** `ServeMux` with method + path patterns (Go ≥ 1.22). No framework. |
@@ -84,7 +84,7 @@ Handlers → service → repository. Handlers never touch the DB. Other modules 
 | Lint | **`golangci-lint`** incl. `forbidigo` (no floats in money code), `depguard` (module boundaries) |
 | API docs | OpenAPI 3.1 file written by hand (spec-first) |
 | Local env | **Docker Compose**: `postgres`, `wallet`, `banksim` |
-| Container images | Multi-stage: `golang:1.25` builder (`CGO_ENABLED=0`) → **`gcr.io/distroless/static-debian12:nonroot`** runtime. Go binaries also import `time/tzdata` so `Africa/Cairo` always resolves. (decided in T001) |
+| Container images | Multi-stage: `golang:1.27` builder (`CGO_ENABLED=0`) → **`gcr.io/distroless/static-debian12:nonroot`** runtime. Go binaries also import `time/tzdata` so `Africa/Cairo` always resolves. (decided in T001) |
 | Repository / CI | GitHub `yaya1426/e-wallet`. GitHub Actions on every `pull_request` to `main` and every `push` to `main`: tidy check, gofmt, go vet, golangci-lint, build, unit tests (`-race`), integration tests (testcontainers, PostgreSQL 18), docker compose smoke test (`/healthz`, `/readyz`). `main` is protected: PR + green checks required, no force-push, no required approvals. (decided in T001) |
 
 ### 4. Process wiring (`cmd/wallet/main.go`)

@@ -31,4 +31,4 @@ Every unit of work is a task folder `TNNN-<slug>/` (e.g. `T001-project-bootstrap
 
 | ID | Title | Status |
 |----|-------|--------|
-| [T001](T001-project-bootstrap/task.md) | Project bootstrap: Go skeleton, local env and CI | Ready |
+| [T001](T001-project-bootstrap/task.md) | Project bootstrap: Go skeleton, local env and CI | Done |
