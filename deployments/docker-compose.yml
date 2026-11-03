@@ -1,0 +1,68 @@
+# Local environment: PostgreSQL, a one-shot migration run, the wallet service and the
+# bank simulator (TDR-012). Start with `make up`, stop with `make down`.
+name: e-wallet
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: wallet
+      POSTGRES_USER: wallet
+      POSTGRES_PASSWORD: wallet
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wallet -d wallet"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    # Same image as wallet (built by the wallet service), so it is not built twice.
+    image: e-wallet/wallet:local
+    pull_policy: never
+    command: ["migrate", "up"]
+    environment:
+      DATABASE_URL: postgres://wallet:wallet@postgres:5432/wallet?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  wallet:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile
+      args:
+        APP: wallet
+    image: e-wallet/wallet:local
+    command: ["serve"]
+    # Longer than SHUTDOWN_TIMEOUT (25s) so Docker does not SIGKILL a graceful shutdown.
+    stop_grace_period: 30s
+    environment:
+      DATABASE_URL: postgres://wallet:wallet@postgres:5432/wallet?sslmode=disable
+      HTTP_ADDR: ":8080"
+      LOG_LEVEL: info
+    ports:
+      - "8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  banksim:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile
+      args:
+        APP: banksim
+    image: e-wallet/banksim:local
+    environment:
+      BANKSIM_HTTP_ADDR: ":9090"
+      LOG_LEVEL: info
+    ports:
+      - "9090:9090"
+
+volumes:
+  postgres-data:
