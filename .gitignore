@@ -1,0 +1,23 @@
+# Binaries and build output
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+
+# Coverage
+coverage*
+*.cover
+
+# Local environment
+.env
+.env.*
+!configs/.env.example
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
