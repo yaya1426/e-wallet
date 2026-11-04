@@ -1,8 +1,10 @@
 # syntax=docker/dockerfile:1
-# Builds one binary from cmd/${APP} (wallet or banksim) into a distroless image (TDR-012).
+# Builds one binary from cmd/${APP} into a distroless image (TDR-012, TDR-015).
+# APP defaults to wallet, so platforms that build the root Dockerfile without build
+# arguments (e.g. DigitalOcean App Platform) get the wallet service.
 
 FROM golang:1.27 AS build
-ARG APP
+ARG APP=wallet
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

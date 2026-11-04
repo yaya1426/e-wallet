@@ -138,8 +138,8 @@ access log at `info` (logged at `debug`) so they don't flood the logs.
 - [x] AC-11 — `wallet migrate up` applies the baseline migration (version 1); running it again is a no-op with exit 0; `migrate status` prints `version=1 dirty=false latest=1`; with a dirty version `migrate up` exits 1 and `/readyz` reports `migrations:"fail"`.
 - [x] AC-12 — `GET /metrics` returns Prometheus text including `go_goroutines` and `http_requests_total`.
 - [x] AC-13 — `golangci-lint` fails on a `float64` inside a guarded money package and on an `internal/platform` package importing a business module (proved once with a throwaway file during implementation, then removed; result recorded in `implementation.md`).
-- [ ] AC-14 — The private repo `yaya1426/e-wallet` exists with `main` holding the docs/skills commit; T001 is on `task/T001-project-bootstrap`; the CI workflow runs on the PR and all four jobs (`lint`, `test`, `integration`, `smoke`) pass.
-- [ ] AC-15 — `main` protection requires the four checks and blocks force-push (or, if GitHub refused on the private plan, the repo was made public and protection applied).
+- [x] AC-14 — The private repo `yaya1426/e-wallet` exists with `main` holding the docs/skills commit; T001 is on `task/T001-project-bootstrap`; the CI workflow runs on the PR and all four jobs (`lint`, `test`, `integration`, `smoke`) pass.
+- [x] AC-15 — `main` protection requires the four checks and blocks force-push (or, if GitHub refused on the private plan, the repo was made public and protection applied).
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -186,6 +186,7 @@ access log at `info` (logged at `debug`) so they don't flood the logs.
 | 2026-11-03 | Repo `yaya1426/e-wallet` (private), module `github.com/yaya1426/e-wallet` | Yahya | TDR-012 |
 | 2026-11-03 | Go 1.25 / toolchain go1.25.4 | Yahya | TDR-012 |
 | 2026-11-03 | Go 1.27 / toolchain go1.27.3 (replaces 1.25: EOL, deps need ≥ 1.26) — asked during implementation | Yahya | TDR-012, this task |
+| 2026-11-03 | Branch protection refused on the private free plan → repo made **public** (confirmed again by the user at that moment), then protection applied | Yahya | this task |
 | 2026-11-03 | Compose publishes PostgreSQL on host port 5432 (`POSTGRES_HOST_PORT` overrides it) | Yahya (review round 1) | this task, README, `.env.example` |
 | 2026-11-03 | CI: lint, test, integration, compose smoke; on PRs and push to main | Yahya | TDR-012 |
 | 2026-11-03 | Protect `main`: PR + green checks, no force-push, no required approvals; if refused on private free plan → make repo public | Yahya | TDR-012, this task |
@@ -206,3 +207,5 @@ access log at `info` (logged at `debug`) so they don't flood the logs.
 | 2026-11-03 | Changes Requested | Review round 1: 2 Major, 7 Minor, 6 Nit — see review.md |
 | 2026-11-03 | Approved | Review round 2: findings #1–#9 fixed and re-verified (65 tests, lint 0); Nits optional |
 | 2026-11-03 | Done | Finalized — PR opened |
+| 2026-11-03 | Done | PR yaya1426/e-wallet#1 merged (fb70478) after lint/test/integration/smoke passed; repo made public; `main` protected (PR + 4 checks, strict, no force-push/deletion, no approvals, admins included) |
+| 2026-11-04 | Done | Note: Dockerfile and docker-compose.yml later moved to the repo root (TDR-015) |

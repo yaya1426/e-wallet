@@ -15,7 +15,7 @@ report.
 | 6 | Unit tests | `go test -race -count=1 ./...` | all pass |
 | 7 | Integration tests | `go test -race -count=1 -tags=integration ./...` (testcontainers Postgres; needs Docker) | all pass |
 | 8 | Coverage of changed packages | `go test -cover ./internal/<changed>/...` | report the numbers; new business logic should have its business cases covered |
-| 9 | Run the service | `docker compose -f deployments/docker-compose.yml up -d --build` (or `go run ./cmd/wallet` + Postgres + `go run ./cmd/banksim`), wait for `GET /readyz` = 200 | ready |
+| 9 | Run the service | `docker compose up -d --build --wait` (`make up`) (or `go run ./cmd/wallet` + Postgres + `go run ./cmd/banksim`), wait for `GET /readyz` = 200 | ready |
 | 10 | HTTP checks | `curl` every new/changed endpoint: happy path + each error code in the task's AC; for async flows poll `GET /v1/transactions/{id}` until terminal | responses match the AC |
 | 11 | Ledger integrity | run the integrity check (`wallet reconcile --job=ledger_integrity` or the SQL in TDR-004 §6) after the HTTP checks | no discrepancy |
 | 12 | Tear down | `docker compose ... down -v` | — |

@@ -40,7 +40,8 @@ e-wallet/
 │   └── openapi/banksim.yaml  # simulator contract
 ├── migrations/            # golang-migrate SQL migrations (TDR-014)
 ├── configs/               # example .env files
-├── deployments/           # docker-compose.yml, Dockerfiles
+├── Dockerfile             # at the root (TDR-015; was deployments/)
+├── docker-compose.yml     # at the root (TDR-015; was deployments/)
 ├── scripts/               # helper scripts (make targets call these)
 ├── test/                  # e2e tests & fixtures (black-box against running containers)
 ├── docs/                  # PRDs, TDRs, engineering docs
