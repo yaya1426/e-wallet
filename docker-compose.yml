@@ -1,5 +1,5 @@
 # Local environment: PostgreSQL, a one-shot migration run, the wallet service and the
-# bank simulator (TDR-012). Start with `make up`, stop with `make down`.
+# bank simulator (TDR-012, TDR-015). Start with `make up`, stop with `make down`.
 name: e-wallet
 
 services:
@@ -33,8 +33,8 @@ services:
 
   wallet:
     build:
-      context: ..
-      dockerfile: deployments/Dockerfile
+      context: .
+      dockerfile: Dockerfile
       args:
         APP: wallet
     image: e-wallet/wallet:local
@@ -53,8 +53,8 @@ services:
 
   banksim:
     build:
-      context: ..
-      dockerfile: deployments/Dockerfile
+      context: .
+      dockerfile: Dockerfile
       args:
         APP: banksim
     image: e-wallet/banksim:local

@@ -6,7 +6,7 @@ MIGRATE_VERSION       := v4.20.1
 BIN           := $(CURDIR)/bin
 GOLANGCI_LINT := $(BIN)/golangci-lint
 MIGRATE       := $(BIN)/migrate
-COMPOSE       := docker compose -f deployments/docker-compose.yml
+COMPOSE       := docker compose -f docker-compose.yml
 
 POSTGRES_HOST_PORT ?= 5432
 LOCAL_DATABASE_URL ?= postgres://wallet:wallet@localhost:$(POSTGRES_HOST_PORT)/wallet?sslmode=disable

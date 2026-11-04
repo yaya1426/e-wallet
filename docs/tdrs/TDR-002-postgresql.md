@@ -12,7 +12,7 @@ We need a reliable, ACID database with row-level locking, strong constraints and
 work-queue capability (for the outbox) without adding another infrastructure component.
 
 ## Decision
-- **PostgreSQL 18** (image `postgres:18-alpine`), pinned in `deployments/docker-compose.yml`, CI and testcontainers. (Decided in T001.)
+- **PostgreSQL 18** (image `postgres:18-alpine`), pinned in `docker-compose.yml`, CI and testcontainers. (Decided in T001.)
 - One database `wallet`, one schema `public`, plain table names. Which module owns which table
   is recorded in `engineering/data-model.md` and enforced in code review (TDR-001 module rules).
   Schema-per-module was rejected as extra ceremony for one service.

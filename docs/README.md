@@ -39,6 +39,7 @@ Spec-driven development: **nothing is implemented until the relevant PRD and TDR
 | [TDR-012](tdrs/TDR-012-go-project-layout-and-stack.md) | Go project layout & libraries | Accepted |
 | [TDR-013](tdrs/TDR-013-ids-and-api-conventions.md) | IDs, time & API conventions | Accepted |
 | [TDR-014](tdrs/TDR-014-golang-migrate.md) | Migrations with golang-migrate (supersedes goose in TDR-002/012) | Accepted |
+| [TDR-015](tdrs/TDR-015-container-files-at-root.md) | Dockerfile and docker-compose.yml at the repo root | Accepted |
 
 ## Engineering
 
