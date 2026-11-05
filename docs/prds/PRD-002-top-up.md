@@ -2,7 +2,7 @@
 
 | Field        | Value                                   |
 |--------------|-----------------------------------------|
-| Status       | Proposed — awaiting review              |
+| Status       | Accepted (2026-11-05, phase-1 roadmap planning) |
 | Owner        | Yahya Elaraby                           |
 | Created      | 2026-11-03                              |
 | Depends on   | PRD-001                                 |
@@ -120,7 +120,7 @@ The reconciliation job (TDR-009) handles top-ups when:
 
 | Situation | Action |
 |-----------|--------|
-| `PROCESSING` > 10 min (webhook not received) | Ask bank `GET /debits?idempotency_key={transaction_id}`. If final → apply the same handler as the webhook. If still pending → check again later. |
+| `PROCESSING` > 10 min (webhook not received) | Ask bank `GET /v1/operations/{transaction_id}` (TDR-008; aligned 2026-11-05). If final → apply the same handler as the webhook. If still pending → check again later. |
 | `PENDING` with outbox event dead (max attempts) | Ask bank. Not found → `FAILED` (`BANK_UNAVAILABLE`). Found → adopt `bank_reference`, continue as `PROCESSING`. |
 | Bank says succeeded, our transaction is `FAILED` | **Discrepancy** (critical). Never auto-fix. Operator decides (credit via a new entry or refund at bank). |
 | Amount mismatch | **Discrepancy** (critical). |

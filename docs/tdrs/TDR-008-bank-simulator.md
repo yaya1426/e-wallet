@@ -2,7 +2,7 @@
 
 | Field      | Value |
 |------------|-------|
-| Status     | Proposed |
+| Status     | Accepted (2026-11-05, phase-1 roadmap planning) |
 | Date       | 2026-11-03 |
 | Deciders   | Yahya Elaraby |
 | Related    | PRD-002, PRD-003, TDR-006, TDR-007, TDR-009 |

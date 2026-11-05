@@ -32,3 +32,24 @@ Every unit of work is a task folder `TNNN-<slug>/` (e.g. `T001-project-bootstrap
 | ID | Title | Status |
 |----|-------|--------|
 | [T001](T001-project-bootstrap/task.md) | Project bootstrap: Go skeleton, local env and CI | Done |
+| [T002](T002-platform-primitives/task.md) | Platform primitives: money, id, clock, unit of work | Ready |
+| [T003](T003-ledger-core/task.md) | Ledger core (+ sqlc) | Ready |
+| [T004](T004-onboarding-auth-wallet/task.md) | Onboarding: register, login, my wallet | Ready |
+| [T005](T005-bank-account-linking/task.md) | Bank account linking | Ready |
+| [T006](T006-transaction-module/task.md) | Transaction module | Ready |
+| [T007](T007-api-idempotency/task.md) | API idempotency | Ready |
+| [T008](T008-p2p-transfer/task.md) | P2P transfer | Ready |
+| [T009](T009-recipient-preview/task.md) | Recipient preview | Ready |
+| [T010](T010-transaction-history-api/task.md) | Transaction history API | Ready |
+| [T011](T011-generic-db-queue/task.md) | Generic DB queue | Ready |
+| [T012](T012-outbox-module/task.md) | Outbox module | Ready |
+| [T013](T013-bank-gateway-port/task.md) | Bank gateway port + banksim adapter | Ready |
+| [T014](T014-bank-simulator-core/task.md) | Bank simulator core | Ready |
+| [T015](T015-webhook-inbox/task.md) | Webhook ingestion (inbox) | Ready |
+| [T016](T016-discrepancy-apply-bank-outcome/task.md) | Discrepancy module + ApplyBankOutcome (debits) | Ready |
+| [T017](T017-top-up-request/task.md) | Top-up request | Ready |
+| [T018](T018-withdrawal-request/task.md) | Withdrawal request | Ready |
+| [T019](T019-withdrawal-outcome/task.md) | Withdrawal outcome | Ready |
+| [T020](T020-e2e-manual-guide/task.md) | End-to-end suite + manual test guide | Ready |
+
+Phase-1 order and dependencies: see the [roadmap](../roadmap.md). Phase-2 tasks are planned after phase 1.

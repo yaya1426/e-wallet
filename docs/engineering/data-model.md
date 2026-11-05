@@ -2,7 +2,7 @@
 
 | Field   | Value |
 |---------|-------|
-| Status  | Proposed — awaiting review |
+| Status  | Accepted (2026-11-05, phase-1 roadmap planning) |
 | Date    | 2026-11-03 |
 | Sources | TDR-002, TDR-003, TDR-004, TDR-005, TDR-006, TDR-007, TDR-009 |
 
@@ -21,7 +21,8 @@ timestamps `timestamptz` UTC.
 | `idempotency_keys` | idempotency |
 | `outbox_events`, `outbox_events_archive` | outbox |
 | `inbox_events` | webhook |
-| `job_runs`, `reconciliation_discrepancies` | reconciliation |
+| `job_runs` | reconciliation |
+| `reconciliation_discrepancies` | discrepancy (decided 2026-11-05; see TDR-009 §3) |
 
 ## 2. ER Diagram
 

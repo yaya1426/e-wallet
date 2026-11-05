@@ -2,7 +2,7 @@
 
 | Field      | Value |
 |------------|-------|
-| Status     | Proposed |
+| Status     | Accepted (2026-11-05, phase-1 roadmap planning) |
 | Date       | 2026-11-03 |
 | Deciders   | Yahya Elaraby |
 | Related    | PRD-001 BR-1..BR-4 |
@@ -22,7 +22,11 @@ money path causes rounding drift and reconciliation breaks. EGP has a minor unit
    ```text
    type Money struct { Amount int64; Currency Currency }   // Amount in minor units
    ```
-   - Constructors validate currency and sign.
+   (Decided 2026-11-05, T002: the fields are **unexported** with `Amount()` / `Currency()`
+   accessors, so an invalid value can only come from the constructors.)
+   - Constructors validate currency and sign (decided 2026-11-05): `New(amount, cur)` accepts
+     any sign (balances; system accounts may be negative, TDR-010 §3); `NewPositive(amount, cur)`
+     rejects amounts ≤ 0 and is used for every movement amount (PRD-001 BR-4).
    - `Add`/`Sub` check currency equality and **overflow** (return error, never wrap).
    - No `float64` anywhere in money code; a lint rule (`forbidigo`) bans `float32/float64` in
      money, ledger, wallet, payment packages.

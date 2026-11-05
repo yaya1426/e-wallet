@@ -2,7 +2,7 @@
 
 | Field      | Value |
 |------------|-------|
-| Status     | Proposed |
+| Status     | Accepted (2026-11-05, phase-1 roadmap planning) |
 | Date       | 2026-11-03 |
 | Deciders   | Yahya Elaraby |
 | Related    | PRD-002 §7, PRD-003 §7, TDR-004 §6, TDR-006, TDR-007, TDR-008 |
@@ -40,6 +40,9 @@ don't need it.
 | `daily_settlement` | 02:00 Africa/Cairo | Pull `GetStatement(yesterday)`; match each bank movement to a transaction by `bank_reference`; compare totals with ledger postings on `BANK_SETTLEMENT` for that day; compare closing balance. Unmatched on either side → discrepancy. |
 
 ### 3. Discrepancies
+Owned by the small **`discrepancy` module** (TDR-016, decided 2026-11-05), not by `reconciliation`, so that
+`payment` (via `ApplyBankOutcome`), `webhook` and `reconciliation` can all record one without
+breaking the import rules (architecture §3.2). It exposes `Record(ctx, tx, …)` and `List`.
 Table `reconciliation_discrepancies`: `id, kind (STATUS_MISMATCH | AMOUNT_MISMATCH |
 UNMATCHED_BANK_MOVEMENT | UNMATCHED_LEDGER_MOVEMENT | STUCK_TRANSACTION | UNKNOWN_BANK_EVENT |
 LEDGER_INTEGRITY), severity, transaction_id NULL, details JSONB, status (OPEN | RESOLVED),

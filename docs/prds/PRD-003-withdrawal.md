@@ -2,7 +2,7 @@
 
 | Field        | Value                                   |
 |--------------|-----------------------------------------|
-| Status       | Proposed — awaiting review              |
+| Status       | Accepted (2026-11-05, phase-1 roadmap planning) |
 | Owner        | Yahya Elaraby                           |
 | Created      | 2026-11-03                              |
 | Depends on   | PRD-001                                 |

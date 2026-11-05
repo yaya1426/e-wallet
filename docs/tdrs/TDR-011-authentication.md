@@ -2,7 +2,7 @@
 
 | Field      | Value |
 |------------|-------|
-| Status     | Proposed — **needs decision (PRD-001 Q2)** |
+| Status     | Accepted (2026-11-05, phase-1 roadmap planning; PRD-001 Q2 answered: this proposal) |
 | Date       | 2026-11-03 |
 | Deciders   | Yahya Elaraby |
 | Related    | PRD-001 §7 |
