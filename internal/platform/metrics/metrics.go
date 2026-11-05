@@ -16,6 +16,8 @@ type Metrics struct {
 	registry        *prometheus.Registry
 	requests        *prometheus.CounterVec
 	requestDuration *prometheus.HistogramVec
+	txRetries       *prometheus.CounterVec
+	txTryAgain      prometheus.Counter
 }
 
 // New creates the registry and registers all collectors.
@@ -31,13 +33,27 @@ func New() *Metrics {
 			Help:    "HTTP request duration, by method and route pattern.",
 			Buckets: prometheus.DefBuckets,
 		}, []string{"method", "route"}),
+		txRetries: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "db_tx_retries_total",
+			Help: "Database transactions retried after a conflict, by reason (serialization_failure, deadlock, lock_timeout).",
+		}, []string{"reason"}),
+		txTryAgain: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "db_tx_try_again_total",
+			Help: "Database transactions abandoned with TRY_AGAIN after all retries.",
+		}),
 	}
 	m.registry.MustRegister(
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		m.requests,
 		m.requestDuration,
+		m.txRetries,
+		m.txTryAgain,
 	)
+	// Pre-create the retry reasons so the series exist (at 0) before the first retry.
+	for _, reason := range []string{"serialization_failure", "deadlock", "lock_timeout"} {
+		m.txRetries.WithLabelValues(reason)
+	}
 	return m
 }
 
@@ -50,4 +66,14 @@ func (m *Metrics) Handler() http.Handler {
 func (m *Metrics) ObserveHTTP(method, route string, status int, duration time.Duration) {
 	m.requests.WithLabelValues(method, route, strconv.Itoa(status)).Inc()
 	m.requestDuration.WithLabelValues(method, route).Observe(duration.Seconds())
+}
+
+// ObserveTxRetry counts one retried database transaction (database.TxObserver).
+func (m *Metrics) ObserveTxRetry(reason string) {
+	m.txRetries.WithLabelValues(reason).Inc()
+}
+
+// ObserveTxTryAgain counts one transaction abandoned after all retries (database.TxObserver).
+func (m *Metrics) ObserveTxTryAgain() {
+	m.txTryAgain.Inc()
 }

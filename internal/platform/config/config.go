@@ -18,6 +18,11 @@ type Wallet struct {
 	HTTPAddr        string        `env:"HTTP_ADDR"        envDefault:":8080"`
 	LogLevel        slog.Level    `env:"-"`
 	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"25s"`
+
+	// Unit-of-work settings (TDR-010 §5).
+	DBLockTimeout      time.Duration `env:"DB_LOCK_TIMEOUT"      envDefault:"2s"`
+	DBStatementTimeout time.Duration `env:"DB_STATEMENT_TIMEOUT" envDefault:"5s"`
+	DBTxMaxRetries     int           `env:"DB_TX_MAX_RETRIES"    envDefault:"3"`
 }
 
 // Banksim is the configuration of the bank simulator (cmd/banksim).
@@ -37,8 +42,8 @@ func LoadWallet(environ map[string]string) (Wallet, error) {
 	if err := parse(&cfg, environ); err != nil {
 		return Wallet{}, err
 	}
-	if cfg.ShutdownTimeout <= 0 {
-		return Wallet{}, fmt.Errorf("config: SHUTDOWN_TIMEOUT must be positive, got %s", cfg.ShutdownTimeout)
+	if err := cfg.validate(); err != nil {
+		return Wallet{}, err
 	}
 	level, err := loadLogLevel(environ)
 	if err != nil {
@@ -46,6 +51,27 @@ func LoadWallet(environ map[string]string) (Wallet, error) {
 	}
 	cfg.LogLevel = level
 	return cfg, nil
+}
+
+func (cfg Wallet) validate() error {
+	var errs []error
+	positive := []struct {
+		name  string
+		value time.Duration
+	}{
+		{"SHUTDOWN_TIMEOUT", cfg.ShutdownTimeout},
+		{"DB_LOCK_TIMEOUT", cfg.DBLockTimeout},
+		{"DB_STATEMENT_TIMEOUT", cfg.DBStatementTimeout},
+	}
+	for _, p := range positive {
+		if p.value <= 0 {
+			errs = append(errs, fmt.Errorf("config: %s must be positive, got %s", p.name, p.value))
+		}
+	}
+	if cfg.DBTxMaxRetries < 0 {
+		errs = append(errs, fmt.Errorf("config: DB_TX_MAX_RETRIES must not be negative, got %d", cfg.DBTxMaxRetries))
+	}
+	return errors.Join(errs...)
 }
 
 // LoadBanksim reads the bank simulator configuration. A nil environ reads the process environment.

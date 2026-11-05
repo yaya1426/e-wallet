@@ -16,10 +16,10 @@ import (
 func newMigrator(t *testing.T) (*database.Migrator, string) {
 	t.Helper()
 	url := databasetest.Shared(t).NewDatabase(t)
-	pool, err := database.Open(context.Background(), url)
+	db, err := database.Open(context.Background(), url, database.Options{Tx: database.DefaultTxSettings()})
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
-	migrator, err := database.NewMigrator(pool, url)
+	t.Cleanup(db.Close)
+	migrator, err := database.NewMigrator(db.Pool(), url)
 	require.NoError(t, err)
 	return migrator, url
 }
@@ -27,15 +27,15 @@ func newMigrator(t *testing.T) (*database.Migrator, string) {
 func TestOpen_PingsDatabase(t *testing.T) {
 	url := databasetest.Shared(t).NewDatabase(t)
 
-	pool, err := database.Open(context.Background(), url)
+	db, err := database.Open(context.Background(), url, database.Options{Tx: database.DefaultTxSettings()})
 	require.NoError(t, err)
-	defer pool.Close()
+	defer db.Close()
 
-	assert.NoError(t, pool.Ping(context.Background()))
+	assert.NoError(t, db.Ping(context.Background()))
 }
 
 func TestOpen_InvalidURL(t *testing.T) {
-	_, err := database.Open(context.Background(), "not a url ::")
+	_, err := database.Open(context.Background(), "not a url ::", database.Options{Tx: database.DefaultTxSettings()})
 	assert.Error(t, err)
 }
 
@@ -62,10 +62,10 @@ func TestMigrate_DirtyVersion_Fails(t *testing.T) {
 	migrator, url := newMigrator(t)
 	require.NoError(t, migrator.Up(ctx))
 
-	pool, err := database.Open(ctx, url)
+	db, err := database.Open(ctx, url, database.Options{Tx: database.DefaultTxSettings()})
 	require.NoError(t, err)
-	defer pool.Close()
-	_, err = pool.Exec(ctx, `UPDATE schema_migrations SET dirty = true`)
+	defer db.Close()
+	_, err = db.Pool().Exec(ctx, `UPDATE schema_migrations SET dirty = true`)
 	require.NoError(t, err)
 
 	status, err := migrator.Status(ctx)
