@@ -2,8 +2,8 @@
 
 | Field   | Value |
 |---------|-------|
-| Status  | Proposed — awaiting review |
-| Date    | 2026-11-03 |
+| Status  | Accepted (2026-11-05, phase-1 roadmap planning) |
+| Date    | 2026-11-03 (updated 2026-11-05: `discrepancy` module) |
 | Sources | PRD-001…004, TDR-001…013 |
 
 This document describes the system using the [C4 model](https://c4model.com):
@@ -96,7 +96,8 @@ flowchart TB
         ledger["ledger<br/>accounts, journal entries,<br/>postings (only money writer)"]
         outbox["outbox<br/>enqueue + handler registry"]
         webhook["webhook<br/>signature check, inbox"]
-        recon["reconciliation<br/>jobs, discrepancies"]
+        recon["reconciliation<br/>jobs"]
+        disc["discrepancy<br/>discrepancy records"]
         bank["bank<br/>Gateway port + banksim adapter"]
     end
 
@@ -104,12 +105,13 @@ flowchart TB
         plat["config · database (UoW/tx) · queue ·<br/>money · id · clock · logger · metrics"]
     end
 
-    api --> identity & idem & walletm & transfer & payment & txn & webhook & recon
+    api --> identity & idem & walletm & transfer & payment & txn & webhook & recon & disc
     obw --> outbox --> payment
     ibw --> webhook --> payment
     sch --> recon
-    recon --> payment & ledger & txn & bank
-    payment --> walletm & txn & ledger & outbox & bank
+    recon --> payment & ledger & txn & bank & disc
+    payment --> walletm & txn & ledger & outbox & bank & disc
+    webhook --> disc
     transfer --> walletm & txn & ledger & identity
     walletm --> ledger
     identity --> walletm
@@ -128,10 +130,15 @@ flowchart TB
 | `idempotency` | `idempotency_keys` | middleware, `Begin/Complete(tx, …)` | — |
 | `outbox` | `outbox_events` | `Enqueue(tx, Event)`, `Register(type, handler)`, `Run(ctx)` | contain business rules |
 | `webhook` | `inbox_events` | HTTP handler, `Run(ctx)` workers | change money directly (calls `payment`) |
-| `reconciliation` | `job_runs`, `reconciliation_discrepancies` | `Run(ctx)` scheduler, jobs, discrepancy queries | edit ledger history |
+| `reconciliation` | `job_runs` | `Run(ctx)` scheduler, jobs | edit ledger history |
+| `discrepancy` | `reconciliation_discrepancies` | `Record(ctx, tx, …)`, `List` | change money or transaction status |
 | `bank` | — | `Gateway` interface + adapters | leak HTTP details to callers |
 
 ### 3.2 Dependency rules
+- Two arrows are implemented through interfaces that the caller defines and `main` wires (decided
+  2026-11-05 while planning T010/T015): `webhook → payment` (`webhook.EventHandler`, implemented
+  by `payment`), and the history API in `transaction` reads wallet IDs and party names through
+  `transaction.WalletOfUser` / `transaction.Parties` (adapters over `wallet` and `identity`).
 - Arrows above are the **only** allowed import directions; enforced with `depguard` in CI.
 - `ledger` and `platform` depend on nothing in business modules.
 - Orchestrators (`payment`, `transfer`, `reconciliation`) open the DB transaction (unit of

@@ -2,7 +2,7 @@
 
 | Field        | Value                                   |
 |--------------|-----------------------------------------|
-| Status       | Proposed — awaiting review              |
+| Status       | Accepted (2026-11-05, phase-1 roadmap planning) |
 | Owner        | Yahya Elaraby                           |
 | Created      | 2026-11-03                              |
 | Depends on   | PRD-001                                 |
@@ -65,8 +65,8 @@ POST /v1/transfers  {recipient_phone, amount_minor, currency, note}
 | P2P-BR-4 | No outbox, no bank, no webhook involved. |
 | P2P-BR-5 | Recipient is looked up by phone number in E.164 format (`+20…`). The response shows the recipient's masked name to confirm. |
 
-> **Open question Q7:** do we want a "preview recipient" endpoint (`GET /v1/recipients?phone=`)
-> before sending? Proposal: yes, returns masked name only.
+> **Q7 answered (2026-11-05):** yes — `GET /v1/recipients?phone=` returns the recipient's
+> masked name only, so the sender can confirm before sending.
 
 ## 6. Acceptance Criteria
 

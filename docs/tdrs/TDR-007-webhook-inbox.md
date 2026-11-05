@@ -2,7 +2,7 @@
 
 | Field      | Value |
 |------------|-------|
-| Status     | Proposed |
+| Status     | Accepted (2026-11-05, phase-1 roadmap planning) |
 | Date       | 2026-11-03 |
 | Deciders   | Yahya Elaraby |
 | Related    | PRD-002, PRD-003, TDR-005, TDR-006, TDR-009 |
@@ -43,7 +43,8 @@ Processing one event (one DB transaction):
 3. Apply the shared **`payment.ApplyBankOutcome(ctx, tx, txnID, outcome)`** function — the
    **same function** reconciliation uses (TDR-009):
    - already terminal with same outcome → no-op;
-   - terminal with different outcome → write `reconciliation_discrepancies`, no money change;
+   - terminal with different outcome → record a discrepancy through the `discrepancy` module
+     (`discrepancy.Record(ctx, tx, …)`, same DB tx; TDR-016), no money change;
    - amount mismatch → discrepancy, no money change;
    - otherwise post ledger entry (TDR-004) and move status.
 4. Mark inbox event `DONE`.

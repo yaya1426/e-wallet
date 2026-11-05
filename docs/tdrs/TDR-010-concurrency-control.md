@@ -2,7 +2,7 @@
 
 | Field      | Value |
 |------------|-------|
-| Status     | Proposed |
+| Status     | Accepted (2026-11-05, phase-1 roadmap planning) |
 | Date       | 2026-11-03 |
 | Deciders   | Yahya Elaraby |
 | Related    | PRD-003, PRD-004, TDR-002, TDR-004 |
@@ -30,7 +30,9 @@ together.
 5. **Timeouts:** `SET LOCAL lock_timeout = '2s'` and `statement_timeout = '5s'` for money
    transactions; on lock timeout or deadlock (`40P01`) / serialization error (`40001`) the
    use case **retries the whole DB transaction** up to 3 times with small jitter, then returns
-   `503 TRY_AGAIN`.
+   `503 TRY_AGAIN`. (Decided 2026-11-05: the numbers are config — `DB_LOCK_TIMEOUT=2s`,
+   `DB_STATEMENT_TIMEOUT=5s`, `DB_TX_MAX_RETRIES=3` — and the wait between attempts is a random
+   10–50 ms. Lock timeout = SQLSTATE `55P03`. Implemented by `database.DB.InTx`, T002.)
 6. **Short transactions:** no network call (bank, etc.) ever happens while a DB transaction is
    open. Bank calls happen in workers, outside DB transactions; their results are applied in a
    new short transaction.

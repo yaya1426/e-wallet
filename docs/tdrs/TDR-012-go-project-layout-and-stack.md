@@ -32,7 +32,8 @@ e-wallet/
 │   ├── idempotency/       # API idempotency middleware + store
 │   ├── outbox/            # outbox dispatcher, handler registry
 │   ├── webhook/           # bank webhook endpoint + inbox processing
-│   ├── reconciliation/    # scheduler + recon jobs + discrepancies
+│   ├── reconciliation/    # scheduler + recon jobs
+│   ├── discrepancy/       # reconciliation_discrepancies (added by TDR-016)
 │   ├── bank/              # Gateway port + banksim HTTP adapter
 │   └── banksim/           # simulator implementation used by cmd/banksim
 ├── api/

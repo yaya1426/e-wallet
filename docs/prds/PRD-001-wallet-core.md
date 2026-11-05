@@ -2,7 +2,7 @@
 
 | Field        | Value                                   |
 |--------------|-----------------------------------------|
-| Status       | Proposed — awaiting review              |
+| Status       | Accepted (2026-11-05, phase-1 roadmap planning) |
 | Owner        | Yahya Elaraby                           |
 | Created      | 2026-11-03                              |
 | Related PRDs | PRD-002 Top-up, PRD-003 Withdrawal, PRD-004 P2P Transfer |
@@ -112,10 +112,10 @@ from bank delays, network failures, duplicate requests and lost webhooks.
 - **BR-19** Calls from the wallet to the bank are also idempotent: the wallet sends its own
   transaction ID as the bank-side idempotency key, so retries never charge or pay twice.
 
-### 5.6 Limits (proposed — must be confirmed)
-All limits are **configuration**, not code. Proposed defaults:
+### 5.6 Limits (confirmed 2026-11-05)
+All limits are **configuration**, not code. Defaults:
 
-| Limit | Proposed value |
+| Limit | Default value |
 |-------|----------------|
 | Minimum top-up | 10.00 EGP (`1000`) |
 | Maximum single top-up | 30,000.00 EGP (`3000000`) |
@@ -126,8 +126,9 @@ All limits are **configuration**, not code. Proposed defaults:
 | Maximum wallet balance | 100,000.00 EGP (`10000000`) |
 | Daily outgoing (withdraw + P2P) per user | 60,000.00 EGP (`6000000`) |
 
-> **Open question Q1:** confirm limits (real-world limits depend on the CBE regulation and the
-> partner bank). Daily limits use the **Africa/Cairo** calendar day.
+> **Q1 answered (2026-11-05):** the values above are the defaults (real-world limits depend on
+> the CBE regulation and the partner bank; change them by config). Daily limits use the
+> **Africa/Cairo** calendar day.
 
 ### 5.7 Fees
 - **BR-20** No fees in this phase. The ledger design must allow adding a fee account later
@@ -157,9 +158,8 @@ All limits are **configuration**, not code. Proposed defaults:
 - **US-6** As a user, I link my bank account (IBAN + account holder name) so I can top up and
   withdraw. One linked bank account per user in this phase.
 
-> **Open question Q2:** Authentication scope. Proposal (TDR-011): minimal built-in auth —
-> phone + password (bcrypt), short-lived JWT access token. No OTP, no refresh tokens in this
-> phase. Alternative: no auth at all, user ID in a header (dev only). Please choose.
+> **Q2 answered (2026-11-05):** minimal built-in auth (TDR-011) — phone + password (bcrypt),
+> short-lived JWT access token. No OTP, no refresh tokens in this phase.
 
 ## 8. Non-Functional Requirements
 
@@ -185,16 +185,17 @@ All limits are **configuration**, not code. Proposed defaults:
 3. A ledger integrity check (all postings sum to 0; cached balances = ledger balances)
    passes after every test scenario.
 
-## 10. Open Questions (summary)
+## 10. Open Questions (summary — all answered 2026-11-05 with the proposed answer)
 
-| # | Question | Proposed answer |
-|---|----------|-----------------|
+| # | Question | Answer |
+|---|----------|--------|
 | Q1 | Final transaction / balance / daily limits | Table in §5.6 |
 | Q2 | Authentication scope | Minimal phone+password + JWT (TDR-011) |
 | Q3 | Withdrawal: auto-retry on bank *rejection*? | No. Rejection = `FAILED` + refund. Only technical errors are retried (PRD-003). |
 | Q4 | Can a user have more than one linked bank account? | No, one in this phase. |
 | Q5 | Time to wait before reconciliation asks the bank about a stuck transaction | 10 minutes after it entered `PROCESSING` (TDR-009). |
 | Q6 | Top-up model: bank **pulls** from the user's account (direct debit) vs. user **pushes** a bank transfer with a reference | Pull/direct-debit model (PRD-002). |
+| Q7 | Recipient preview endpoint before a P2P transfer? | Yes — `GET /v1/recipients?phone=`, masked name only (PRD-004). |
 
 ## 11. Glossary
 
