@@ -84,6 +84,65 @@ linters:
               desc: ledger must not import business modules
             - pkg: github.com/yaya1426/e-wallet/internal/banksim
               desc: ledger must not import business modules
+        # identity → wallet → ledger (architecture §3.2). identity reaches wallet only through
+        # its WalletOpener interface, so it imports no business module at all.
+        identity-deps:
+          files:
+            - "**/internal/identity/**"
+            - "!$test" # integration tests wire the real modules together
+          deny:
+            - pkg: github.com/yaya1426/e-wallet/internal/wallet
+              desc: identity must not import business modules (it uses the WalletOpener interface)
+            - pkg: github.com/yaya1426/e-wallet/internal/ledger
+              desc: identity must not import business modules (it uses the WalletOpener interface)
+            - pkg: github.com/yaya1426/e-wallet/internal/transaction
+              desc: identity must not import business modules (it uses the WalletOpener interface)
+            - pkg: github.com/yaya1426/e-wallet/internal/payment
+              desc: identity must not import business modules (it uses the WalletOpener interface)
+            - pkg: github.com/yaya1426/e-wallet/internal/transfer
+              desc: identity must not import business modules (it uses the WalletOpener interface)
+            - pkg: github.com/yaya1426/e-wallet/internal/idempotency
+              desc: identity must not import business modules (it uses the WalletOpener interface)
+            - pkg: github.com/yaya1426/e-wallet/internal/outbox
+              desc: identity must not import business modules (it uses the WalletOpener interface)
+            - pkg: github.com/yaya1426/e-wallet/internal/webhook
+              desc: identity must not import business modules (it uses the WalletOpener interface)
+            - pkg: github.com/yaya1426/e-wallet/internal/reconciliation
+              desc: identity must not import business modules (it uses the WalletOpener interface)
+            - pkg: github.com/yaya1426/e-wallet/internal/discrepancy
+              desc: identity must not import business modules (it uses the WalletOpener interface)
+            - pkg: github.com/yaya1426/e-wallet/internal/bank
+              desc: identity must not import business modules (it uses the WalletOpener interface)
+            - pkg: github.com/yaya1426/e-wallet/internal/banksim
+              desc: identity must not import business modules (it uses the WalletOpener interface)
+        # wallet may import ledger only.
+        wallet-deps:
+          files:
+            - "**/internal/wallet/**"
+            - "!$test" # integration tests wire the real modules together
+          deny:
+            - pkg: github.com/yaya1426/e-wallet/internal/identity
+              desc: wallet may import only ledger among business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/transaction
+              desc: wallet may import only ledger among business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/payment
+              desc: wallet may import only ledger among business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/transfer
+              desc: wallet may import only ledger among business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/idempotency
+              desc: wallet may import only ledger among business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/outbox
+              desc: wallet may import only ledger among business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/webhook
+              desc: wallet may import only ledger among business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/reconciliation
+              desc: wallet may import only ledger among business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/discrepancy
+              desc: wallet may import only ledger among business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/bank
+              desc: wallet may import only ledger among business modules
+            - pkg: github.com/yaya1426/e-wallet/internal/banksim
+              desc: wallet may import only ledger among business modules
     forbidigo:
       forbid:
         # Money is int64 piasters; floats are forbidden in money code (TDR-003).

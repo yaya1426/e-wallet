@@ -34,7 +34,7 @@ Every unit of work is a task folder `TNNN-<slug>/` (e.g. `T001-project-bootstrap
 | [T001](T001-project-bootstrap/task.md) | Project bootstrap: Go skeleton, local env and CI | Done |
 | [T002](T002-platform-primitives/task.md) | Platform primitives: money, id, clock, unit of work | Done |
 | [T003](T003-ledger-core/task.md) | Ledger core (+ sqlc) | Done |
-| [T004](T004-onboarding-auth-wallet/task.md) | Onboarding: register, login, my wallet | Ready |
+| [T004](T004-onboarding-auth-wallet/task.md) | Onboarding: register, login, my wallet | Approved |
 | [T005](T005-bank-account-linking/task.md) | Bank account linking | Ready |
 | [T006](T006-transaction-module/task.md) | Transaction module | Ready |
 | [T007](T007-api-idempotency/task.md) | API idempotency | Ready |

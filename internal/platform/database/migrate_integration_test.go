@@ -45,7 +45,7 @@ func TestMigrate_UpIdempotent_StatusApplied(t *testing.T) {
 
 	before, err := migrator.Status(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, database.MigrationStatus{Version: 0, Dirty: false, Latest: 2}, before)
+	assert.Equal(t, database.MigrationStatus{Version: 0, Dirty: false, Latest: 3}, before)
 	assert.True(t, before.Pending())
 
 	require.NoError(t, migrator.Up(ctx))
@@ -53,7 +53,7 @@ func TestMigrate_UpIdempotent_StatusApplied(t *testing.T) {
 
 	after, err := migrator.Status(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, database.MigrationStatus{Version: 2, Dirty: false, Latest: 2}, after)
+	assert.Equal(t, database.MigrationStatus{Version: 3, Dirty: false, Latest: 3}, after)
 	assert.False(t, after.Pending())
 }
 
