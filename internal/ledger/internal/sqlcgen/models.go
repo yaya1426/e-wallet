@@ -41,3 +41,22 @@ type Posting struct {
 	BalanceAfter   int64
 	CreatedAt      time.Time
 }
+
+type User struct {
+	ID           uuid.UUID
+	PhoneE164    string
+	FullName     string
+	PasswordHash string
+	Status       string
+	CreatedAt    time.Time
+}
+
+type Wallet struct {
+	ID              uuid.UUID
+	UserID          uuid.UUID
+	LedgerAccountID uuid.UUID
+	Currency        string
+	Status          string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}

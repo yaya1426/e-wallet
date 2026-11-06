@@ -2,6 +2,7 @@ package config
 
 import (
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,6 +25,8 @@ func TestConfig_LoadWallet_Defaults(t *testing.T) {
 		DBLockTimeout:      2 * time.Second,
 		DBStatementTimeout: 5 * time.Second,
 		DBTxMaxRetries:     3,
+
+		JWTTTL: 15 * time.Minute,
 	}, cfg)
 }
 
@@ -98,4 +101,44 @@ func TestConfig_LoadWallet_ReportsEveryInvalidVariable(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "DATABASE_URL")
 	assert.Contains(t, err.Error(), "SHUTDOWN_TIMEOUT")
+}
+
+func TestConfig_ValidateServe_JWT(t *testing.T) {
+	secret := strings.Repeat("s", 32)
+	tests := []struct {
+		name    string
+		environ map[string]string
+		wantVar string // "" means valid
+	}{
+		{"valid secret, default TTL", map[string]string{"JWT_SECRET": secret}, ""},
+		{"missing secret", map[string]string{}, "JWT_SECRET"},
+		{"31-byte secret", map[string]string{"JWT_SECRET": secret[:31]}, "JWT_SECRET"},
+		{"zero TTL", map[string]string{"JWT_SECRET": secret, "JWT_TTL": "0s"}, "JWT_TTL"},
+		{"negative TTL", map[string]string{"JWT_SECRET": secret, "JWT_TTL": "-1m"}, "JWT_TTL"},
+		{"sub-second TTL", map[string]string{"JWT_SECRET": secret, "JWT_TTL": "90500ms"}, "JWT_TTL"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			environ := map[string]string{"DATABASE_URL": testDatabaseURL}
+			for k, v := range tt.environ {
+				environ[k] = v
+			}
+			cfg, err := LoadWallet(environ)
+			require.NoError(t, err, "the migrate commands load without JWT settings")
+
+			err = cfg.ValidateServe()
+			if tt.wantVar == "" {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantVar)
+		})
+	}
+}
+
+func TestConfig_LoadWallet_InvalidJWTTTL(t *testing.T) {
+	_, err := LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL, "JWT_TTL": "soon"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "JWT_TTL")
 }

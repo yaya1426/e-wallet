@@ -10,6 +10,9 @@ const (
 	CodeNotFound         = "NOT_FOUND"
 	CodeMethodNotAllowed = "METHOD_NOT_ALLOWED"
 	CodeInternal         = "INTERNAL_ERROR"
+	// CodeTryAgain answers database.ErrTryAgain: the request lost a conflict with others
+	// and may be retried as is (TDR-010 §5).
+	CodeTryAgain = "TRY_AGAIN"
 )
 
 type errorBody struct {

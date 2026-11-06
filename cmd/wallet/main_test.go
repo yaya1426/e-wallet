@@ -15,6 +15,9 @@ import (
 	"github.com/yaya1426/e-wallet/internal/platform/metrics"
 )
 
+// testJWTSecret is a 32-byte secret for tests that start serve.
+const testJWTSecret = "test-jwt-secret-of-32-bytes-long"
+
 func runCLI(t *testing.T, environ map[string]string, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	var out, errOut bytes.Buffer
@@ -67,6 +70,9 @@ func TestServe_InvalidConfig_Exit1NamesVariable(t *testing.T) {
 		{"serve, zero DB_LOCK_TIMEOUT", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x", "DB_LOCK_TIMEOUT": "0s"}, "DB_LOCK_TIMEOUT"},
 		{"serve, bad DB_STATEMENT_TIMEOUT", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x", "DB_STATEMENT_TIMEOUT": "later"}, "DB_STATEMENT_TIMEOUT"},
 		{"serve, negative DB_TX_MAX_RETRIES", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x", "DB_TX_MAX_RETRIES": "-1"}, "DB_TX_MAX_RETRIES"},
+		{"serve, no JWT_SECRET", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x"}, "JWT_SECRET"},
+		{"serve, 31-byte JWT_SECRET", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x", "JWT_SECRET": testJWTSecret[:31]}, "JWT_SECRET"},
+		{"serve, zero JWT_TTL", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x", "JWT_SECRET": testJWTSecret, "JWT_TTL": "0s"}, "JWT_TTL"},
 		{"migrate up, no DATABASE_URL", []string{"migrate", "up"}, map[string]string{}, "DATABASE_URL"},
 		{"migrate status, no DATABASE_URL", []string{"migrate", "status"}, map[string]string{}, "DATABASE_URL"},
 	}
@@ -83,6 +89,7 @@ func TestServe_InvalidConfig_Exit1NamesVariable(t *testing.T) {
 func TestServe_DatabaseUnreachable_Exit1(t *testing.T) {
 	code, stdout, _ := runCLI(t, map[string]string{
 		"DATABASE_URL": "postgres://wallet:wallet@127.0.0.1:1/wallet?sslmode=disable&connect_timeout=1",
+		"JWT_SECRET":   testJWTSecret,
 	}, "serve")
 
 	assert.Equal(t, exitError, code)
@@ -90,7 +97,7 @@ func TestServe_DatabaseUnreachable_Exit1(t *testing.T) {
 }
 
 func TestMetrics_Exposed(t *testing.T) {
-	h := newHandler(logger.New(io.Discard, slog.LevelInfo), metrics.New(), nil)
+	h := newHandler(logger.New(io.Discard, slog.LevelInfo), metrics.New(), nil, nil)
 
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	rec := httptest.NewRecorder()
@@ -104,7 +111,7 @@ func TestMetrics_Exposed(t *testing.T) {
 }
 
 func TestHealthz_RouteServed(t *testing.T) {
-	h := newHandler(logger.New(io.Discard, slog.LevelInfo), metrics.New(), nil)
+	h := newHandler(logger.New(io.Discard, slog.LevelInfo), metrics.New(), nil, nil)
 	rec := httptest.NewRecorder()
 
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))

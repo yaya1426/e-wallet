@@ -1,0 +1,312 @@
+openapi: 3.1.0
+info:
+  title: E-Wallet API
+  version: 0.1.0
+  summary: EGP e-wallet backend (phase 1).
+  description: |
+    Public JSON API of the wallet service. Conventions (TDR-013, TDR-017):
+    `snake_case` fields; amounts are integer piasters in `*_minor` fields (1 EGP = 100);
+    timestamps are RFC 3339 UTC; request bodies are strict JSON (unknown fields rejected,
+    at most 64 KB); every response has an `X-Request-ID` header.
+
+    This file is the catalogue of error codes (TDR-017 §3): each endpoint lists its codes.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: http://localhost:8080
+    description: Local docker compose stack
+tags:
+  - name: auth
+    description: Registration and login (TDR-011).
+  - name: wallet
+    description: The signed-in user's wallet.
+security: []
+paths:
+  /v1/auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      summary: Register a user and open their EGP wallet
+      description: |
+        Creates the user, their EGP wallet and its ledger account (balance 0) in one
+        transaction (PRD-001 US-1, BR-5). Validation order: body → phone → password → name →
+        phone uniqueness. No token is returned; call `/v1/auth/login`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Registered.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '400':
+          description: |
+            `MALFORMED_REQUEST` (bad JSON, unknown field, wrong type, trailing data),
+            `INVALID_PHONE`, `INVALID_PASSWORD`, `INVALID_NAME`.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: '`PHONE_ALREADY_REGISTERED`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          $ref: '#/components/responses/RequestTooLarge'
+        '500':
+          $ref: '#/components/responses/Internal'
+        '503':
+          $ref: '#/components/responses/TryAgain'
+  /v1/auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Log in and get an access token
+      description: |
+        Unknown phone and wrong password get the same answer. Every attempt counts towards
+        the limits: 10 per phone and 30 per client IP per minute.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Logged in.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: '`MALFORMED_REQUEST`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: '`INVALID_CREDENTIALS`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/UserDisabled'
+        '413':
+          $ref: '#/components/responses/RequestTooLarge'
+        '429':
+          description: '`TOO_MANY_REQUESTS`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /v1/me/wallet:
+    get:
+      tags: [wallet]
+      operationId: getMyWallet
+      summary: Get the signed-in user's wallet
+      description: |
+        `available_balance_minor` is the cached ledger balance (TDR-004 §5). Money reserved for
+        an in-flight withdrawal is already excluded (PRD-001 BR-9).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The wallet.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Wallet'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/UserDisabled'
+        '500':
+          $ref: '#/components/responses/Internal'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: HS256 access token from `/v1/auth/login` (TDR-011).
+  headers:
+    RequestID:
+      description: The request ID; echoed from the request or generated (UUIDv7).
+      schema:
+        type: string
+  responses:
+    Unauthenticated:
+      description: '`UNAUTHENTICATED`: missing, malformed, badly signed or expired token.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UserDisabled:
+      description: '`USER_DISABLED`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RequestTooLarge:
+      description: '`REQUEST_TOO_LARGE`: the body is larger than 64 KB.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Internal:
+      description: '`INTERNAL_ERROR`: an unexpected server error; details are only in the server log.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    TryAgain:
+      description: '`TRY_AGAIN`: the request kept conflicting with others; retry it as is.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      description: Error body of every non-2xx response (TDR-013).
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable code (see each endpoint).
+              examples: [INVALID_PHONE]
+            message:
+              type: string
+              description: Human-readable text; may change.
+            request_id:
+              type: string
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [phone, full_name, password]
+      properties:
+        phone:
+          type: string
+          description: Egyptian mobile number in E.164.
+          pattern: '^\+201[0125][0-9]{8}$'
+          examples: ['+201001234567']
+        full_name:
+          type: string
+          description: 2 to 100 characters after trimming spaces.
+          examples: [Ahmed Mohamed Ali]
+        password:
+          type: string
+          format: password
+          description: 8 to 72 bytes.
+    RegisterResponse:
+      type: object
+      required: [user_id, phone, full_name, wallet_id, created_at]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        phone:
+          type: string
+        full_name:
+          type: string
+        wallet_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [phone, password]
+      properties:
+        phone:
+          type: string
+        password:
+          type: string
+          format: password
+    LoginResponse:
+      type: object
+      required: [access_token, token_type, expires_in]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          const: Bearer
+        expires_in:
+          type: integer
+          description: Seconds until the token expires (JWT_TTL).
+          examples: [900]
+    Wallet:
+      type: object
+      required: [wallet_id, currency, available_balance_minor, status]
+      properties:
+        wallet_id:
+          type: string
+          format: uuid
+        currency:
+          type: string
+          const: EGP
+        available_balance_minor:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Available balance in piasters.
+        status:
+          type: string
+          enum: [ACTIVE, FROZEN]
