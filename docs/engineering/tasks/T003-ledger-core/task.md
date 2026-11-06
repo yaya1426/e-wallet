@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T003 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T003-ledger-core` |
 | Depends on   | T002 |
@@ -139,21 +139,21 @@ func (s *Service) VerifyIntegrity(ctx) (IntegrityReport, error)
 - Statement / history read APIs.
 
 ## Acceptance Criteria
-- [ ] AC-1 — Given `migrate up`, then the three tables exist, the 3 system accounts exist with balance 0, and `migrate status` shows version 2. `make migrate-down` reverses it.
-- [ ] AC-2 — Given `CreateUserAccount(walletID)`, then an account `USER_WALLET:<walletID>` exists (USER_WALLET/LIABILITY/CREDIT, balance 0). A second call with the same wallet ID fails (unique code).
-- [ ] AC-3 — Given a balanced entry Dr `BANK_SETTLEMENT` 1000 / Cr user 1000, when posted, then the user balance = 1000, `BANK_SETTLEMENT` = 1000 (debit-normal), each posting's `balance_after` is right, `version` went up by 1 on both, and `VerifyIntegrity` is clean.
-- [ ] AC-4 — Given an entry Dr user 1000 / Cr `WITHDRAWALS_IN_TRANSIT` 1000 on a user with balance 1000, then user = 0 and in-transit = 1000.
-- [ ] AC-5 — Given an unbalanced entry, < 2 postings, an amount ≤ 0, or mixed currency, then `Post` returns the matching sentinel and nothing is written.
-- [ ] AC-6 — Given the same `(transaction_id, entry_type)` posted twice, then the second returns `ErrDuplicateEntry` and the balances changed only once.
-- [ ] AC-7 — Given a debit that would make a user wallet negative, then `ErrInsufficientBalance` and the tx rolls back. System accounts may go negative without error.
-- [ ] AC-8 — Given raw SQL inserting an unbalanced set of postings, when the tx commits, then the commit fails (deferred trigger).
-- [ ] AC-9 — Given raw SQL `UPDATE`/`DELETE`/`TRUNCATE` on `postings` or `journal_entries`, then it fails.
-- [ ] AC-10 — Given 50 goroutines each posting +100 into the same user account (each in its own `InTx` with `LockAccounts`), then the final balance = 5000 and `VerifyIntegrity` is clean.
-- [ ] AC-11 — Given two goroutines repeatedly posting A→B and B→A (P2P entries) with `LockAccounts([A,B])`, then no error reaches the caller (ordered locks; any retry happens inside `InTx`), and the final balances are correct.
-- [ ] AC-12 — Given a cached `ledger_accounts.balance` changed by a raw `UPDATE` (the append-only trigger covers entries and postings only), then `VerifyIntegrity` reports that account.
-- [ ] AC-13 — `LockAccounts` with an unknown ID → `ErrAccountNotFound`.
-- [ ] AC-14 — `make sqlc-check` passes on a clean tree and fails when `queries.sql` is changed without regenerating. CI runs it.
-- [ ] AC-15 — `golangci-lint` passes. The generated code is excluded, and `internal/ledger` importing another business module is a depguard error (proved once with a throwaway file, recorded in `implementation.md`).
+- [x] AC-1 — Given `migrate up`, then the three tables exist, the 3 system accounts exist with balance 0, and `migrate status` shows version 2. `make migrate-down` reverses it.
+- [x] AC-2 — Given `CreateUserAccount(walletID)`, then an account `USER_WALLET:<walletID>` exists (USER_WALLET/LIABILITY/CREDIT, balance 0). A second call with the same wallet ID fails (unique code).
+- [x] AC-3 — Given a balanced entry Dr `BANK_SETTLEMENT` 1000 / Cr user 1000, when posted, then the user balance = 1000, `BANK_SETTLEMENT` = 1000 (debit-normal), each posting's `balance_after` is right, `version` went up by 1 on both, and `VerifyIntegrity` is clean.
+- [x] AC-4 — Given an entry Dr user 1000 / Cr `WITHDRAWALS_IN_TRANSIT` 1000 on a user with balance 1000, then user = 0 and in-transit = 1000.
+- [x] AC-5 — Given an unbalanced entry, < 2 postings, an amount ≤ 0, or mixed currency, then `Post` returns the matching sentinel and nothing is written.
+- [x] AC-6 — Given the same `(transaction_id, entry_type)` posted twice, then the second returns `ErrDuplicateEntry` and the balances changed only once.
+- [x] AC-7 — Given a debit that would make a user wallet negative, then `ErrInsufficientBalance` and the tx rolls back. System accounts may go negative without error.
+- [x] AC-8 — Given raw SQL inserting an unbalanced set of postings, when the tx commits, then the commit fails (deferred trigger).
+- [x] AC-9 — Given raw SQL `UPDATE`/`DELETE`/`TRUNCATE` on `postings` or `journal_entries`, then it fails.
+- [x] AC-10 — Given 50 goroutines each posting +100 into the same user account (each in its own `InTx` with `LockAccounts`), then the final balance = 5000 and `VerifyIntegrity` is clean.
+- [x] AC-11 — Given two goroutines repeatedly posting A→B and B→A (P2P entries) with `LockAccounts([A,B])`, then no error reaches the caller (ordered locks; any retry happens inside `InTx`), and the final balances are correct.
+- [x] AC-12 — Given a cached `ledger_accounts.balance` changed by a raw `UPDATE` (the append-only trigger covers entries and postings only), then `VerifyIntegrity` reports that account.
+- [x] AC-13 — `LockAccounts` with an unknown ID → `ErrAccountNotFound`.
+- [x] AC-14 — `make sqlc-check` passes on a clean tree and fails when `queries.sql` is changed without regenerating. CI runs it.
+- [x] AC-15 — `golangci-lint` passes. The generated code is excluded, and `internal/ledger` importing another business module is a depguard error (proved once with a throwaway file, recorded in `implementation.md`).
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -189,3 +189,9 @@ func (s *Service) VerifyIntegrity(ctx) (IntegrityReport, error)
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-05 | Ready | Planned with the phase-1 roadmap; all questions answered |
+| 2026-11-06 | In Progress | implement-task started on `task/T003-ledger-core`, branched from the unmerged `task/T002-platform-primitives` (PR #4) with the user's OK; rebase onto main before its PR |
+| 2026-11-06 | In Review | Implemented and verified: lint 0, sqlc-check ok, 111 unit + 155 integration pass, compose schema/seed/integrity/down-up checks pass. See implementation.md |
+| 2026-11-06 | In Review | T002 merged (PR #4, `366cd0a`); branch moved onto main, build + sqlc-check re-checked |
+| 2026-11-06 | Changes Requested | Review round 1: 1 Major (lock order vs. system accounts), 2 Minor, 1 Nit |
+| 2026-11-06 | Approved | Review round 2: all fixed; `make ci` ok, 160 tests pass |
+| 2026-11-06 | Done | Finalized — PR opened with GitHub auto-merge |
