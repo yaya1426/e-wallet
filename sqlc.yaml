@@ -1,0 +1,20 @@
+# sqlc generates type-safe Go from SQL (TDR-012). One block per module: each module's
+# queries are generated into internal/<module>/internal/sqlcgen, which Go's `internal` rule
+# makes private to that module, so no module can query another module's tables (TDR-001).
+# The schema is read from the golang-migrate files (down files are ignored).
+version: "2"
+sql:
+  - engine: postgresql
+    schema: migrations
+    queries: internal/ledger/queries.sql
+    gen:
+      go:
+        package: sqlcgen
+        out: internal/ledger/internal/sqlcgen
+        sql_package: pgx/v5
+        emit_interface: false
+        overrides:
+          - db_type: uuid
+            go_type: github.com/google/uuid.UUID
+          - db_type: timestamptz
+            go_type: time.Time

@@ -25,6 +25,12 @@ together.
    (row lock held only for the statement), and they are allowed to be any sign by design. They
    are verified by the integrity job (TDR-004 §6). *Alternative if contention appears:* skip
    the cached balance for system accounts and compute it on demand.
+   (Clarified 2026-11-06, T003 review: in PostgreSQL the `UPDATE`'s row lock is held **until
+   commit**, not only for the statement, so bank-flow transactions do serialise on the system
+   row while they are open — acceptable because they are short. To keep one global lock order,
+   `ledger.Post` updates **user-wallet accounts first (ascending ID), then system accounts
+   (ascending ID)**; callers lock user-wallet accounts with `LockAccounts` and never system
+   accounts.)
 4. **DB guard:** `CHECK (balance >= 0)` on user-wallet accounts — if the code ever forgets a
    check, the commit fails instead of overdrawing.
 5. **Timeouts:** `SET LOCAL lock_timeout = '2s'` and `statement_timeout = '5s'` for money

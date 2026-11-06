@@ -2,25 +2,30 @@
 
 GOLANGCI_LINT_VERSION := v2.15.0
 MIGRATE_VERSION       := v4.20.1
+SQLC_VERSION          := v1.31.1
 
 BIN           := $(CURDIR)/bin
 GOLANGCI_LINT := $(BIN)/golangci-lint
 MIGRATE       := $(BIN)/migrate
+SQLC          := $(BIN)/sqlc
 COMPOSE       := docker compose -f docker-compose.yml
 
 POSTGRES_HOST_PORT ?= 5432
 LOCAL_DATABASE_URL ?= postgres://wallet:wallet@localhost:$(POSTGRES_HOST_PORT)/wallet?sslmode=disable
 
 .DEFAULT_GOAL := help
-.PHONY: help tools fmt fmt-check tidy-check vet lint build test test-integration cover \
+.PHONY: help tools tool-sqlc fmt fmt-check tidy-check vet lint sqlc sqlc-check build test test-integration cover \
         up down migrate migrate-down migration e2e ci
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; {printf "  %-18s %s\n", $$1, $$2}'
 
-tools: ## Install golangci-lint and the migrate CLI into ./bin
+tools: tool-sqlc ## Install golangci-lint, the migrate CLI and sqlc into ./bin
 	GOBIN=$(BIN) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 	GOBIN=$(BIN) go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@$(MIGRATE_VERSION)
+
+tool-sqlc: ## Install the pinned sqlc into ./bin (also used by CI)
+	GOBIN=$(BIN) go install github.com/sqlc-dev/sqlc/cmd/sqlc@$(SQLC_VERSION)
 
 fmt: ## Format all Go files
 	gofmt -w .
@@ -36,6 +41,15 @@ vet: ## Run go vet (all build tags)
 
 lint: ## Run golangci-lint
 	$(GOLANGCI_LINT) run ./...
+
+sqlc: ## Generate Go code from the modules' queries.sql (sqlc.yaml)
+	$(SQLC) generate
+
+sqlc-check: ## Fail if the generated sqlc code is not up to date
+	$(SQLC) generate
+	@changed="$$(git diff --name-only -- 'internal/*/internal/sqlcgen/*')"; \
+	untracked="$$(git ls-files --others --exclude-standard -- 'internal/*/internal/sqlcgen/*')"; \
+	if [ -n "$$changed$$untracked" ]; then echo "sqlc code is stale; run 'make sqlc' and commit:"; echo "$$changed $$untracked"; exit 1; fi
 
 build: ## Build all packages and binaries
 	go build ./...
@@ -69,4 +83,4 @@ migration: ## Create a new migration pair: make migration name=<snake_name>
 e2e: ## Smoke tests against the running compose stack
 	go test -count=1 -tags e2e ./test/e2e/...
 
-ci: tidy-check fmt-check vet lint build test test-integration ## Every CI check except the compose smoke test
+ci: tidy-check fmt-check vet lint sqlc-check build test test-integration ## Every CI check except the compose smoke test

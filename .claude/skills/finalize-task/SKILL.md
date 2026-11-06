@@ -2,7 +2,6 @@
 name: finalize-task
 description: Finalize an approved e-wallet task — re-verify everything (tidy, gofmt, vet, golangci-lint, build, tests, running service), commit on the task branch, push, open a GitHub pull request with the GitHub CLI, wait for CI/CD to pass, and merge it automatically when the repository allows it. Use only when the user runs "/finalize-task <ID>" or explicitly asks to finalize / ship / open the PR for a task.
 argument-hint: <task ID, e.g. T003> [--no-merge]
-disable-model-invocation: true
 ---
 
 # finalize-task
@@ -60,7 +59,16 @@ Task: docs/engineering/tasks/<ID>-<slug>/task.md
 End the body with the PR attribution line the session requires, if any.
 Give the user the PR link.
 
-## 5. Wait for CI/CD
+## 5. Hand the merge to GitHub auto-merge (user decision 2026-11-06)
+Unless `--no-merge` was passed, run `gh pr merge <number> --auto --squash --delete-branch` right
+after opening the PR. GitHub merges it by itself once every required check (`lint`, `test`,
+`integration`, `smoke`) is green and the branch is up to date; nothing is bypassed. Do not wait
+idle for CI: continue with the next task on a branch created **from this task's branch**, and
+before finalizing that next task check (once) that this PR merged, then rebase the next branch
+onto `origin/main` (`git rebase --onto origin/main <this-branch-tip> <next-branch>`). If this PR
+did not merge because a check failed, fix it as below first.
+
+## 5b. Wait for CI/CD (only with `--no-merge`, or when the next step needs the result now)
 - If the host app offers its own PR/CI monitoring tools (e.g. the Claude desktop app's PR
   tools), use them as the host instructs instead of polling.
 - Otherwise run once, in the background: `gh pr checks <number> --watch --fail-fast`

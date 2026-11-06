@@ -101,7 +101,7 @@ func TestMigrateCommands_UpIdempotentAndStatus(t *testing.T) {
 
 	code, stdout, _ := runCLI(t, environ, "migrate", "status")
 	require.Equal(t, exitOK, code)
-	assert.Equal(t, "version=0 dirty=false latest=1\n", stdout)
+	assert.Equal(t, "version=0 dirty=false latest=2\n", stdout)
 
 	code, _, stderr := runCLI(t, environ, "migrate", "up")
 	require.Equal(t, exitOK, code, stderr)
@@ -110,7 +110,7 @@ func TestMigrateCommands_UpIdempotentAndStatus(t *testing.T) {
 
 	code, stdout, _ = runCLI(t, environ, "migrate", "status")
 	require.Equal(t, exitOK, code)
-	assert.Equal(t, "version=1 dirty=false latest=1\n", stdout)
+	assert.Equal(t, "version=2 dirty=false latest=2\n", stdout)
 }
 
 func TestMigrateUp_DirtyVersion_Exit1(t *testing.T) {
