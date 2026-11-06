@@ -24,11 +24,14 @@ import (
 // newTestApp wires the wallet handler exactly like serve does, against the database at url.
 func newTestApp(t *testing.T, url string) http.Handler {
 	t.Helper()
-	pool, migrator, err := connect(context.Background(), config.Wallet{DatabaseURL: url})
+	cfg, err := config.LoadWallet(map[string]string{"DATABASE_URL": url})
 	require.NoError(t, err)
-	t.Cleanup(pool.Close)
 	log := logger.New(io.Discard, slog.LevelInfo)
-	return newHandler(log, metrics.New(), readinessChecks(log, pool, migrator))
+	m := metrics.New()
+	db, migrator, err := connect(context.Background(), cfg, log, m)
+	require.NoError(t, err)
+	t.Cleanup(db.Close)
+	return newHandler(log, m, readinessChecks(log, db, migrator))
 }
 
 func getReadyz(t *testing.T, h http.Handler) *httptest.ResponseRecorder {
@@ -62,10 +65,10 @@ func TestReadyz_DirtyMigration_Fail(t *testing.T) {
 	url := databasetest.Shared(t).NewDatabase(t)
 	code, _, _ := runCLI(t, map[string]string{"DATABASE_URL": url}, "migrate", "up")
 	require.Equal(t, exitOK, code)
-	pool, err := database.Open(context.Background(), url)
+	db, err := database.Open(context.Background(), url, database.Options{Tx: database.DefaultTxSettings()})
 	require.NoError(t, err)
-	defer pool.Close()
-	_, err = pool.Exec(context.Background(), `UPDATE schema_migrations SET dirty = true`)
+	defer db.Close()
+	_, err = db.Pool().Exec(context.Background(), `UPDATE schema_migrations SET dirty = true`)
 	require.NoError(t, err)
 
 	rec := getReadyz(t, newTestApp(t, url))
@@ -115,10 +118,10 @@ func TestMigrateUp_DirtyVersion_Exit1(t *testing.T) {
 	environ := map[string]string{"DATABASE_URL": url}
 	code, _, _ := runCLI(t, environ, "migrate", "up")
 	require.Equal(t, exitOK, code)
-	pool, err := database.Open(context.Background(), url)
+	db, err := database.Open(context.Background(), url, database.Options{Tx: database.DefaultTxSettings()})
 	require.NoError(t, err)
-	defer pool.Close()
-	_, err = pool.Exec(context.Background(), `UPDATE schema_migrations SET dirty = true`)
+	defer db.Close()
+	_, err = db.Pool().Exec(context.Background(), `UPDATE schema_migrations SET dirty = true`)
 	require.NoError(t, err)
 
 	code, stdout, _ := runCLI(t, environ, "migrate", "up")

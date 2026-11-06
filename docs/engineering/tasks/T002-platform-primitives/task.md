@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T002 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T002-platform-primitives` |
 | Depends on   | T001 |
@@ -179,25 +179,25 @@ None. No endpoint changes. `/readyz` behaves exactly as in T001.
 - `platform/queue` (T011).
 
 ## Acceptance Criteria
-- [ ] AC-1 — Given `NewPositive(0, EGP)` or `NewPositive(-1, EGP)`, then `ErrNotPositive`. Given `NewPositive(1, EGP)`, then a valid value with `Amount()==1`. Given `New(-500, EGP)`, then a valid negative value.
-- [ ] AC-2 — Given currency `"USD"`, `""` or `"egp"`, when `ParseCurrency` / `New` is called, then `ErrUnsupportedCurrency`. `"EGP"` is accepted.
-- [ ] AC-3 — Given `MaxInt64` + 1 or `MinInt64` − 1 via `Add`/`Sub`, then `ErrOverflow` and no wrapped value. Given values with different currencies (including the zero value), then `ErrCurrencyMismatch`.
-- [ ] AC-4 — `Format` gives `15075 → "150.75 EGP"`, `5 → "0.05 EGP"`, `0 → "0.00 EGP"`, `-5 → "-0.05 EGP"`, `-15075 → "-150.75 EGP"`, and `MinInt64` formats without panic.
-- [ ] AC-5 — `golangci-lint` passes and reports no float usage in `internal/platform/money`.
-- [ ] AC-6 — `id.New()` returns version-7 UUIDs; 1 000 consecutive IDs are unique and sort in non-decreasing time order (`uuid.UUID` byte order).
-- [ ] AC-7 — `clock.System{}.Now()` is in UTC. `clocktest.Fake` returns the set time; `Advance` and `Set` work, and parallel `Now`/`Advance` calls pass `-race`.
-- [ ] AC-8 — `CairoDay` on a normal day: for `2026-11-05T10:00:00Z` → `[2026-11-04T22:00:00Z, 2026-11-05T22:00:00Z)` (Cairo UTC+2 in winter). An instant at `21:59:59Z` and at `22:00:00Z` fall in different days.
-- [ ] AC-9 — `CairoDay` on the 2026 DST-start day (Friday 24 April 2026, midnight → 01:00) → `[2026-04-23T22:00:00Z, 2026-04-24T21:00:00Z)` (23 h). On the DST-end day (Thursday 29 October 2026, 24:00 → 23:00) → `[2026-10-28T21:00:00Z, 2026-10-29T22:00:00Z)` (25 h). *If the embedded tzdata disagrees with these Egyptian rules, stop and ask. Do not change the expected values silently.*
-- [ ] AC-10 — Config: the defaults are `DB_LOCK_TIMEOUT=2s`, `DB_STATEMENT_TIMEOUT=5s`, `DB_TX_MAX_RETRIES=3`. A zero or negative timeout, a negative retry count, or a non-number → `wallet serve` exits 1 with an error that names the variable.
-- [ ] AC-11 — `InTx` commits when `fn` returns nil (the row is visible afterwards) and rolls back when `fn` returns an error. That error is returned unchanged (`errors.Is` on a sentinel from `fn` works), and nothing is retried.
-- [ ] AC-12 — Inside `fn`, `SHOW lock_timeout` / `SHOW statement_timeout` return the configured values. After the transaction, a new connection from the pool still has the server defaults (`SET LOCAL` does not leak).
-- [ ] AC-13 — Given a real deadlock between two concurrent `InTx` calls (each locks rows A and B in opposite order), then both calls end successfully (the loser retries). `db_tx_retries_total{reason="deadlock"}` ≥ 1, and the final data is consistent.
-- [ ] AC-14 — Given a row held locked by another connection for longer than the lock timeout, when `InTx` tries to lock it, then it makes `MaxRetries+1` attempts and returns an error matching `errors.Is(err, ErrTryAgain)` with SQLSTATE `55P03` reachable through `errors.As`. `db_tx_try_again_total` is incremented and one warn log is written.
-- [ ] AC-15 — Given `fn` returns a `40001` error on its first call and succeeds on its second, then `InTx` returns nil, `fn` ran twice, and `db_tx_retries_total{reason="serialization_failure"}` = 1.
-- [ ] AC-16 — Given `pg_sleep` longer than the statement timeout, then the `57014` error is returned without any retry.
-- [ ] AC-17 — Given ctx is canceled during the wait between retries, then `InTx` returns `context.Canceled` without another attempt.
-- [ ] AC-18 — Given `fn` panics, then the transaction is rolled back (no row is written), the panic propagates, and the pool still works for the next `InTx`.
-- [ ] AC-19 — After wiring: all T001 tests still pass, `/readyz` behaves as before (database `ok`/`fail`, migrations `ok`/`pending`/`fail`), and `GET /metrics` lists `db_tx_retries_total` and `db_tx_try_again_total`.
+- [x] AC-1 — Given `NewPositive(0, EGP)` or `NewPositive(-1, EGP)`, then `ErrNotPositive`. Given `NewPositive(1, EGP)`, then a valid value with `Amount()==1`. Given `New(-500, EGP)`, then a valid negative value.
+- [x] AC-2 — Given currency `"USD"`, `""` or `"egp"`, when `ParseCurrency` / `New` is called, then `ErrUnsupportedCurrency`. `"EGP"` is accepted.
+- [x] AC-3 — Given `MaxInt64` + 1 or `MinInt64` − 1 via `Add`/`Sub`, then `ErrOverflow` and no wrapped value. Given values with different currencies (including the zero value), then `ErrCurrencyMismatch`.
+- [x] AC-4 — `Format` gives `15075 → "150.75 EGP"`, `5 → "0.05 EGP"`, `0 → "0.00 EGP"`, `-5 → "-0.05 EGP"`, `-15075 → "-150.75 EGP"`, and `MinInt64` formats without panic.
+- [x] AC-5 — `golangci-lint` passes and reports no float usage in `internal/platform/money`.
+- [x] AC-6 — `id.New()` returns version-7 UUIDs; 1 000 consecutive IDs are unique and sort in non-decreasing time order (`uuid.UUID` byte order).
+- [x] AC-7 — `clock.System{}.Now()` is in UTC. `clocktest.Fake` returns the set time; `Advance` and `Set` work, and parallel `Now`/`Advance` calls pass `-race`.
+- [x] AC-8 — `CairoDay` on a normal day: for `2026-11-05T10:00:00Z` → `[2026-11-04T22:00:00Z, 2026-11-05T22:00:00Z)` (Cairo UTC+2 in winter). An instant at `21:59:59Z` and at `22:00:00Z` fall in different days.
+- [x] AC-9 — `CairoDay` on the 2026 DST-start day (Friday 24 April 2026, midnight → 01:00) → `[2026-04-23T22:00:00Z, 2026-04-24T21:00:00Z)` (23 h). On the DST-end day (Thursday 29 October 2026, 24:00 → 23:00) → `[2026-10-28T21:00:00Z, 2026-10-29T22:00:00Z)` (25 h). *If the embedded tzdata disagrees with these Egyptian rules, stop and ask. Do not change the expected values silently.*
+- [x] AC-10 — Config: the defaults are `DB_LOCK_TIMEOUT=2s`, `DB_STATEMENT_TIMEOUT=5s`, `DB_TX_MAX_RETRIES=3`. A zero or negative timeout, a negative retry count, or a non-number → `wallet serve` exits 1 with an error that names the variable.
+- [x] AC-11 — `InTx` commits when `fn` returns nil (the row is visible afterwards) and rolls back when `fn` returns an error. That error is returned unchanged (`errors.Is` on a sentinel from `fn` works), and nothing is retried.
+- [x] AC-12 — Inside `fn`, `SHOW lock_timeout` / `SHOW statement_timeout` return the configured values. After the transaction, a new connection from the pool still has the server defaults (`SET LOCAL` does not leak).
+- [x] AC-13 — Given a real deadlock between two concurrent `InTx` calls (each locks rows A and B in opposite order), then both calls end successfully (the loser retries). `db_tx_retries_total{reason="deadlock"}` ≥ 1, and the final data is consistent.
+- [x] AC-14 — Given a row held locked by another connection for longer than the lock timeout, when `InTx` tries to lock it, then it makes `MaxRetries+1` attempts and returns an error matching `errors.Is(err, ErrTryAgain)` with SQLSTATE `55P03` reachable through `errors.As`. `db_tx_try_again_total` is incremented and one warn log is written.
+- [x] AC-15 — Given `fn` returns a `40001` error on its first call and succeeds on its second, then `InTx` returns nil, `fn` ran twice, and `db_tx_retries_total{reason="serialization_failure"}` = 1.
+- [x] AC-16 — Given `pg_sleep` longer than the statement timeout, then the `57014` error is returned without any retry.
+- [x] AC-17 — Given ctx is canceled during the wait between retries, then `InTx` returns `context.Canceled` without another attempt.
+- [x] AC-18 — Given `fn` panics, then the transaction is rolled back (no row is written), the panic propagates, and the pool still works for the next `InTx`.
+- [x] AC-19 — After wiring: all T001 tests still pass, `/readyz` behaves as before (database `ok`/`fail`, migrations `ok`/`pending`/`fail`), and `GET /metrics` lists `db_tx_retries_total` and `db_tx_try_again_total`.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -249,3 +249,7 @@ None. No endpoint changes. `/readyz` behaves exactly as in T001.
 |------|--------|------|
 | 2026-11-05 | Draft | Created by plan-new-task (phase-1 roadmap) |
 | 2026-11-05 | Ready | 6 questions answered; doc changes applied |
+| 2026-11-05 | In Progress | implement-task started on branch `task/T002-platform-primitives` |
+| 2026-11-05 | In Review | Implemented and verified: lint 0 issues, 95 unit + 116 integration tests pass, compose + HTTP checks pass. See implementation.md |
+| 2026-11-05 | Approved | Review round 1: 0 Blocker, 0 Major, 3 Minor, 4 Nit (optional) — see review.md |
+| 2026-11-05 | Done | Finalized — PR opened (final verification re-run: lint 0, unit + integration pass, compose + HTTP + e2e smoke pass) |

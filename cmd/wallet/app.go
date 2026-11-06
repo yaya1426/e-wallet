@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/yaya1426/e-wallet/internal/platform/config"
@@ -31,15 +30,15 @@ func serve(ctx context.Context, environ map[string]string, stdout, stderr io.Wri
 	if !ok {
 		return exitError
 	}
-	pool, migrator, err := connect(ctx, cfg)
+	m := metrics.New()
+	db, migrator, err := connect(ctx, cfg, log, m)
 	if err != nil {
 		log.Error("startup failed", slog.Any("error", err))
 		return exitError
 	}
-	defer pool.Close()
+	defer db.Close()
 
-	m := metrics.New()
-	srv := httpserver.New(cfg.HTTPAddr, newHandler(log, m, readinessChecks(log, pool, migrator)), cfg.ShutdownTimeout, log)
+	srv := httpserver.New(cfg.HTTPAddr, newHandler(log, m, readinessChecks(log, db, migrator)), cfg.ShutdownTimeout, log)
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return srv.Run(gctx) })
@@ -56,12 +55,12 @@ func migrateUp(ctx context.Context, environ map[string]string, stdout, stderr io
 	if !ok {
 		return exitError
 	}
-	pool, migrator, err := connect(ctx, cfg)
+	db, migrator, err := connect(ctx, cfg, log, nil)
 	if err != nil {
 		log.Error("migrate up failed", slog.Any("error", err))
 		return exitError
 	}
-	defer pool.Close()
+	defer db.Close()
 
 	if err := migrator.Up(ctx); err != nil {
 		log.Error("migrate up failed", slog.Any("error", err))
@@ -82,12 +81,12 @@ func migrateStatus(ctx context.Context, environ map[string]string, stdout, stder
 	if !ok {
 		return exitError
 	}
-	pool, migrator, err := connect(ctx, cfg)
+	db, migrator, err := connect(ctx, cfg, log, nil)
 	if err != nil {
 		log.Error("migrate status failed", slog.Any("error", err))
 		return exitError
 	}
-	defer pool.Close()
+	defer db.Close()
 
 	status, err := migrator.Status(ctx)
 	if err != nil {
@@ -109,20 +108,28 @@ func setup(environ map[string]string, stdout, stderr io.Writer) (config.Wallet, 
 	return cfg, logger.New(stdout, cfg.LogLevel), true
 }
 
-// connect opens the database pool and the migrator.
-func connect(ctx context.Context, cfg config.Wallet) (*pgxpool.Pool, *database.Migrator, error) {
+// connect opens the database and the migrator. observer may be nil.
+func connect(ctx context.Context, cfg config.Wallet, log *slog.Logger, observer database.TxObserver) (*database.DB, *database.Migrator, error) {
 	startCtx, cancel := context.WithTimeout(ctx, startupTimeout)
 	defer cancel()
-	pool, err := database.Open(startCtx, cfg.DatabaseURL)
+	db, err := database.Open(startCtx, cfg.DatabaseURL, database.Options{
+		Tx: database.TxSettings{
+			LockTimeout:      cfg.DBLockTimeout,
+			StatementTimeout: cfg.DBStatementTimeout,
+			MaxRetries:       cfg.DBTxMaxRetries,
+		},
+		Logger:   log,
+		Observer: observer,
+	})
 	if err != nil {
 		return nil, nil, err
 	}
-	migrator, err := database.NewMigrator(pool, cfg.DatabaseURL)
+	migrator, err := database.NewMigrator(db.Pool(), cfg.DatabaseURL)
 	if err != nil {
-		pool.Close()
+		db.Close()
 		return nil, nil, err
 	}
-	return pool, migrator, nil
+	return db, migrator, nil
 }
 
 // newHandler builds the routes of the wallet HTTP API.
@@ -136,10 +143,10 @@ func newHandler(log *slog.Logger, m *metrics.Metrics, checks []httpserver.Readin
 
 // readinessChecks reports the database connection and whether migrations are applied
 // (TDR-013). Failures are logged so a "fail" in /readyz can be diagnosed.
-func readinessChecks(log *slog.Logger, pool *pgxpool.Pool, migrator *database.Migrator) []httpserver.ReadinessCheck {
+func readinessChecks(log *slog.Logger, db *database.DB, migrator *database.Migrator) []httpserver.ReadinessCheck {
 	return []httpserver.ReadinessCheck{
 		{Name: "database", Check: func(ctx context.Context) httpserver.CheckStatus {
-			if err := pool.Ping(ctx); err != nil {
+			if err := db.Ping(ctx); err != nil {
 				log.WarnContext(ctx, "readiness check failed", slog.String("check", "database"), slog.Any("error", err))
 				return httpserver.CheckFail
 			}

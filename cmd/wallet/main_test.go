@@ -64,6 +64,9 @@ func TestServe_InvalidConfig_Exit1NamesVariable(t *testing.T) {
 		{"serve default, no DATABASE_URL", nil, map[string]string{}, "DATABASE_URL"},
 		{"serve, bad LOG_LEVEL", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x", "LOG_LEVEL": "loud"}, "LOG_LEVEL"},
 		{"serve, bad SHUTDOWN_TIMEOUT", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x", "SHUTDOWN_TIMEOUT": "soon"}, "SHUTDOWN_TIMEOUT"},
+		{"serve, zero DB_LOCK_TIMEOUT", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x", "DB_LOCK_TIMEOUT": "0s"}, "DB_LOCK_TIMEOUT"},
+		{"serve, bad DB_STATEMENT_TIMEOUT", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x", "DB_STATEMENT_TIMEOUT": "later"}, "DB_STATEMENT_TIMEOUT"},
+		{"serve, negative DB_TX_MAX_RETRIES", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x", "DB_TX_MAX_RETRIES": "-1"}, "DB_TX_MAX_RETRIES"},
 		{"migrate up, no DATABASE_URL", []string{"migrate", "up"}, map[string]string{}, "DATABASE_URL"},
 		{"migrate status, no DATABASE_URL", []string{"migrate", "status"}, map[string]string{}, "DATABASE_URL"},
 	}
@@ -96,6 +99,8 @@ func TestMetrics_Exposed(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Body.String(), "go_goroutines")
 	assert.Contains(t, rec.Body.String(), `http_requests_total{method="GET",route="GET /healthz",status="200"} 1`)
+	assert.Contains(t, rec.Body.String(), "db_tx_try_again_total 0")
+	assert.Contains(t, rec.Body.String(), `db_tx_retries_total{reason="deadlock"} 0`)
 }
 
 func TestHealthz_RouteServed(t *testing.T) {
