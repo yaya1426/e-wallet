@@ -238,3 +238,42 @@ func TestRegister_CreatedAtMatchesStoredValue(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, reg.User.CreatedAt.Equal(stored.CreatedAt), "201 body %s vs stored %s", reg.User.CreatedAt, stored.CreatedAt)
 }
+
+func TestGetBankAccount_NotFoundThenFound(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	svc := f.service(t, f.wallets)
+	reg, err := svc.Register(ctx, input("+201001234567"))
+	require.NoError(t, err)
+
+	_, err = svc.GetBankAccount(ctx, f.db.Pool(), reg.User.ID)
+	require.ErrorIs(t, err, identity.ErrBankAccountNotFound)
+
+	linked, err := svc.LinkBankAccount(ctx, reg.User.ID, "eg89 0003 0001 0000 0000 1234 5000 0", "  Ahmed Ali ")
+	require.NoError(t, err)
+	assert.Equal(t, "EG890003000100000000123450000", linked.IBAN)
+	assert.Equal(t, "Ahmed Ali", linked.HolderName)
+
+	err = f.db.InTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		got, err := svc.GetBankAccount(ctx, tx, reg.User.ID)
+		require.NoError(t, err)
+		assert.Equal(t, linked, got, "readable inside a unit of work too")
+		return nil
+	})
+	require.NoError(t, err)
+}
+
+func TestLinkBankAccount_ValidationOrder(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	svc := f.service(t, f.wallets)
+	reg, err := svc.Register(ctx, input("+201001234567"))
+	require.NoError(t, err)
+
+	_, err = svc.LinkBankAccount(ctx, reg.User.ID, "EG00", " ")
+	assert.ErrorIs(t, err, identity.ErrInvalidIBAN, "IBAN is checked before the holder name")
+	_, err = svc.LinkBankAccount(ctx, reg.User.ID, "EG890003000100000000123450000", " A ")
+	assert.ErrorIs(t, err, identity.ErrInvalidHolderName)
+	_, err = svc.GetBankAccount(ctx, f.db.Pool(), reg.User.ID)
+	assert.ErrorIs(t, err, identity.ErrBankAccountNotFound, "nothing stored on a validation error")
+}

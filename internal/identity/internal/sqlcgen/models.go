@@ -10,6 +10,15 @@ import (
 	"github.com/google/uuid"
 )
 
+type BankAccount struct {
+	ID         uuid.UUID
+	UserID     uuid.UUID
+	Iban       string
+	HolderName string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
 type JournalEntry struct {
 	ID            uuid.UUID
 	TransactionID uuid.UUID

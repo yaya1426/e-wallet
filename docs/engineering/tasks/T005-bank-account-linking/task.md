@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T005 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T005-bank-account-linking` |
 | Depends on   | T004 |
@@ -75,13 +75,13 @@ Validation order: decode → iban → holder name.
 Several accounts per user, account verification with the bank, deleting the link, encryption at rest.
 
 ## Acceptance Criteria
-- [ ] AC-1 — Given a valid IBAN with spaces/lowercase, then `200` with the normalized IBAN, and the row is stored.
-- [ ] AC-2 — Given a second PUT with another valid IBAN, then `200`, still one row per user (same `id`, `created_at` unchanged, `updated_at` newer).
-- [ ] AC-3 — Given IBANs with a wrong checksum, the wrong country, a wrong length, or letters in the BBAN, then `400 INVALID_IBAN`. A bad holder name → `400 INVALID_HOLDER_NAME`.
-- [ ] AC-4 — `GET` before linking → `404 BANK_ACCOUNT_NOT_FOUND`; after linking → `200`.
-- [ ] AC-5 — User A cannot see or change user B's account (each call uses only the token's user).
-- [ ] AC-6 — `GetBankAccount` returns `ErrBankAccountNotFound` for a user with no link.
-- [ ] AC-7 — The test IBANs `EG890003000100000000123450000`, `EG620003000100000000123450001` and `EG350003000100000000123450002` (used by banksim scenarios, T014/T020) are accepted.
+- [x] AC-1 — Given a valid IBAN with spaces/lowercase, then `200` with the normalized IBAN, and the row is stored.
+- [x] AC-2 — Given a second PUT with another valid IBAN, then `200`, still one row per user (same `id`, `created_at` unchanged, `updated_at` newer).
+- [x] AC-3 — Given IBANs with a wrong checksum, the wrong country, a wrong length, or letters in the BBAN, then `400 INVALID_IBAN`. A bad holder name → `400 INVALID_HOLDER_NAME`.
+- [x] AC-4 — `GET` before linking → `404 BANK_ACCOUNT_NOT_FOUND`; after linking → `200`.
+- [x] AC-5 — User A cannot see or change user B's account (each call uses only the token's user).
+- [x] AC-6 — `GetBankAccount` returns `ErrBankAccountNotFound` for a user with no link.
+- [x] AC-7 — The test IBANs `EG890003000100000000123450000`, `EG620003000100000000123450001` and `EG350003000100000000123450002` (used by banksim scenarios, T014/T020) are accepted.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -105,3 +105,7 @@ Several accounts per user, account verification with the bank, deleting the link
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-05 | Ready | Planned with the phase-1 roadmap; all questions answered |
+| 2026-11-09 | In Progress | implement-task started on `task/T005-bank-account-linking`, stacked on T004 (PR #6, auto-merge) |
+| 2026-11-09 | In Review | Implemented and verified: make ci ok, 262 tests, curl + e2e ok |
+| 2026-11-09 | Approved | Review round 1: Approved (1 Minor fixed, 1 Nit optional) |
+| 2026-11-09 | Done | Finalized — PR opened with GitHub auto-merge |

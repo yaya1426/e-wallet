@@ -90,9 +90,15 @@ const registerBody = `{"phone":"+201001234567","full_name":"Ahmed Mohamed Ali","
 
 func (f apiFixture) registerAndLogin(t *testing.T) (userID, walletID, token string) {
 	t.Helper()
-	reg := f.call(t, http.MethodPost, "/v1/auth/register", "", registerBody)
+	return f.registerAndLoginAs(t, "+201001234567")
+}
+
+func (f apiFixture) registerAndLoginAs(t *testing.T, phone string) (userID, walletID, token string) {
+	t.Helper()
+	reg := f.call(t, http.MethodPost, "/v1/auth/register", "",
+		`{"phone":"`+phone+`","full_name":"Ahmed Mohamed Ali","password":"s3cret-pass"}`)
 	require.Equal(t, http.StatusCreated, reg.status, reg.body)
-	login := f.call(t, http.MethodPost, "/v1/auth/login", "", `{"phone":"+201001234567","password":"s3cret-pass"}`)
+	login := f.call(t, http.MethodPost, "/v1/auth/login", "", `{"phone":"`+phone+`","password":"s3cret-pass"}`)
 	require.Equal(t, http.StatusOK, login.status, login.body)
 	return reg.body["user_id"].(string), reg.body["wallet_id"].(string), login.body["access_token"].(string)
 }
@@ -227,5 +233,96 @@ func TestAPI_WalletRequiresAuth(t *testing.T) {
 		r := f.call(t, http.MethodGet, "/v1/me/wallet", token, "")
 		assert.Equal(t, http.StatusUnauthorized, r.status, name)
 		assert.Equal(t, "UNAUTHENTICATED", errorCode(r), name)
+	}
+}
+
+func TestPutBankAccount_CreateThenReplace(t *testing.T) {
+	f := newAPIFixture(t)
+	ctx := context.Background()
+	userID, _, token := f.registerAndLogin(t)
+
+	first := f.call(t, http.MethodPut, "/v1/me/bank-account", token,
+		`{"iban":"eg89 0003 0001 0000 0000 1234 5000 0","holder_name":" Ahmed Mohamed Ali "}`)
+	require.Equal(t, http.StatusOK, first.status, first.body)
+	assert.Equal(t, "EG890003000100000000123450000", first.body["iban"])
+	assert.Equal(t, "Ahmed Mohamed Ali", first.body["holder_name"])
+
+	var rowID uuid.UUID
+	var createdAt, updatedAt time.Time
+	require.NoError(t, f.db.Pool().QueryRow(ctx, `SELECT id, created_at, updated_at FROM bank_accounts WHERE user_id = $1`, userID).Scan(&rowID, &createdAt, &updatedAt))
+
+	time.Sleep(5 * time.Millisecond) // updated_at must move forward
+	second := f.call(t, http.MethodPut, "/v1/me/bank-account", token,
+		`{"iban":"EG620003000100000000123450001","holder_name":"Ahmed Ali"}`)
+	require.Equal(t, http.StatusOK, second.status, second.body)
+	assert.Equal(t, "EG620003000100000000123450001", second.body["iban"])
+
+	var rows int
+	var rowID2 uuid.UUID
+	var createdAt2, updatedAt2 time.Time
+	require.NoError(t, f.db.Pool().QueryRow(ctx, `SELECT count(*) OVER (), id, created_at, updated_at FROM bank_accounts WHERE user_id = $1`, userID).Scan(&rows, &rowID2, &createdAt2, &updatedAt2))
+	assert.Equal(t, 1, rows, "still one row per user")
+	assert.Equal(t, rowID, rowID2, "same id")
+	assert.True(t, createdAt.Equal(createdAt2), "created_at unchanged")
+	assert.True(t, updatedAt2.After(updatedAt), "updated_at newer")
+
+	got := f.call(t, http.MethodGet, "/v1/me/bank-account", token, "")
+	require.Equal(t, http.StatusOK, got.status)
+	assert.Equal(t, second.body, got.body)
+}
+
+func TestGetBankAccount_NotFoundThenFound_HTTP(t *testing.T) {
+	f := newAPIFixture(t)
+	_, _, token := f.registerAndLogin(t)
+
+	before := f.call(t, http.MethodGet, "/v1/me/bank-account", token, "")
+	assert.Equal(t, http.StatusNotFound, before.status)
+	assert.Equal(t, "BANK_ACCOUNT_NOT_FOUND", errorCode(before))
+
+	put := f.call(t, http.MethodPut, "/v1/me/bank-account", token, `{"iban":"EG350003000100000000123450002","holder_name":"Ahmed Ali"}`)
+	require.Equal(t, http.StatusOK, put.status)
+	after := f.call(t, http.MethodGet, "/v1/me/bank-account", token, "")
+	assert.Equal(t, http.StatusOK, after.status)
+}
+
+func TestBankAccount_IsolatedPerUser(t *testing.T) {
+	f := newAPIFixture(t)
+	_, _, tokenA := f.registerAndLoginAs(t, "+201001234567")
+	_, _, tokenB := f.registerAndLoginAs(t, "+201001234568")
+
+	require.Equal(t, http.StatusOK, f.call(t, http.MethodPut, "/v1/me/bank-account", tokenA,
+		`{"iban":"EG890003000100000000123450000","holder_name":"User A"}`).status)
+
+	b := f.call(t, http.MethodGet, "/v1/me/bank-account", tokenB, "")
+	assert.Equal(t, http.StatusNotFound, b.status, "B does not see A's account")
+
+	require.Equal(t, http.StatusOK, f.call(t, http.MethodPut, "/v1/me/bank-account", tokenB,
+		`{"iban":"EG620003000100000000123450001","holder_name":"User B"}`).status)
+	a := f.call(t, http.MethodGet, "/v1/me/bank-account", tokenA, "")
+	require.Equal(t, http.StatusOK, a.status)
+	assert.Equal(t, "EG890003000100000000123450000", a.body["iban"], "B's PUT did not change A's account")
+	assert.Equal(t, "User A", a.body["holder_name"])
+}
+
+func TestBankAccount_Errors(t *testing.T) {
+	f := newAPIFixture(t)
+	_, _, token := f.registerAndLogin(t)
+	tests := []struct {
+		name, token, body string
+		status            int
+		code              string
+	}{
+		{"no token", "", `{"iban":"EG890003000100000000123450000","holder_name":"Ahmed Ali"}`, 401, "UNAUTHENTICATED"},
+		{"unknown field", token, `{"iban":"EG890003000100000000123450000","holder_name":"Ahmed Ali","bank":"x"}`, 400, "MALFORMED_REQUEST"},
+		{"bad checksum", token, `{"iban":"EG880003000100000000123450000","holder_name":"Ahmed Ali"}`, 400, "INVALID_IBAN"},
+		{"not Egypt", token, `{"iban":"GB82WEST12345698765432","holder_name":"Ahmed Ali"}`, 400, "INVALID_IBAN"},
+		{"bad holder name", token, `{"iban":"EG890003000100000000123450000","holder_name":"A"}`, 400, "INVALID_HOLDER_NAME"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := f.call(t, http.MethodPut, "/v1/me/bank-account", tt.token, tt.body)
+			assert.Equal(t, tt.status, r.status, r.body)
+			assert.Equal(t, tt.code, errorCode(r))
+		})
 	}
 }

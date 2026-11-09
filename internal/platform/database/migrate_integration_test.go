@@ -4,6 +4,7 @@ package database_test
 
 import (
 	"context"
+	"io/fs"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/yaya1426/e-wallet/internal/platform/database"
 	"github.com/yaya1426/e-wallet/internal/platform/database/databasetest"
+	"github.com/yaya1426/e-wallet/migrations"
 )
 
 func newMigrator(t *testing.T) (*database.Migrator, string) {
@@ -45,7 +47,7 @@ func TestMigrate_UpIdempotent_StatusApplied(t *testing.T) {
 
 	before, err := migrator.Status(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, database.MigrationStatus{Version: 0, Dirty: false, Latest: 3}, before)
+	assert.Equal(t, database.MigrationStatus{Version: 0, Dirty: false, Latest: latestMigration(t)}, before)
 	assert.True(t, before.Pending())
 
 	require.NoError(t, migrator.Up(ctx))
@@ -53,7 +55,7 @@ func TestMigrate_UpIdempotent_StatusApplied(t *testing.T) {
 
 	after, err := migrator.Status(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, database.MigrationStatus{Version: 3, Dirty: false, Latest: 3}, after)
+	assert.Equal(t, database.MigrationStatus{Version: latestMigration(t), Dirty: false, Latest: latestMigration(t)}, after)
 	assert.False(t, after.Pending())
 }
 
@@ -86,4 +88,12 @@ func TestMigrate_CancelledContext_ReportsInterrupted(t *testing.T) {
 
 	require.ErrorIs(t, err, context.Canceled)
 	assert.Contains(t, err.Error(), "interrupted")
+}
+
+// latestMigration counts the embedded up migrations; versions are sequential from 1 (TDR-014).
+func latestMigration(t *testing.T) uint {
+	t.Helper()
+	ups, err := fs.Glob(migrations.FS, "*.up.sql")
+	require.NoError(t, err)
+	return uint(len(ups))
 }
