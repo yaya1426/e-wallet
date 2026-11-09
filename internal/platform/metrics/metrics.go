@@ -25,6 +25,7 @@ type Metrics struct {
 	outboxOldestAge prometheus.Gauge
 	outboxDead      prometheus.Counter
 	bankCalls       *prometheus.HistogramVec
+	webhooks        *prometheus.CounterVec
 }
 
 // New creates the registry and registers all collectors.
@@ -79,10 +80,14 @@ func New() *Metrics {
 		Help:    "Bank gateway call duration, by operation and result (ok, rejected, temporary, not_found).",
 		Buckets: prometheus.DefBuckets,
 	}, []string{"op", "result"})
+	m.webhooks = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "webhook_received_total",
+		Help: "Bank webhooks received, by result (stored, duplicate, invalid_signature, malformed, error).",
+	}, []string{"result"})
 	m.registry.MustRegister(
 		m.bankCalls,
 		m.queueJobs, m.queueClaimed, m.queueDuration,
-		m.outboxPending, m.outboxOldestAge, m.outboxDead,
+		m.outboxPending, m.outboxOldestAge, m.outboxDead, m.webhooks,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		m.requests,
@@ -138,6 +143,11 @@ func (m *Metrics) ObserveOutboxBacklog(pending int64, oldestAge time.Duration) {
 // ObserveOutboxDead counts one DEAD outbox event (outbox.Observer).
 func (m *Metrics) ObserveOutboxDead() {
 	m.outboxDead.Inc()
+}
+
+// ObserveWebhookReceived counts one bank webhook by result (webhook.Observer).
+func (m *Metrics) ObserveWebhookReceived(result string) {
+	m.webhooks.WithLabelValues(result).Inc()
 }
 
 // ObserveBankCall records one bank gateway call (banksim.Observer).

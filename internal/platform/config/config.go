@@ -43,6 +43,14 @@ type Wallet struct {
 	BankBaseURL     string        `env:"BANK_BASE_URL"`
 	BankHTTPTimeout time.Duration `env:"BANK_HTTP_TIMEOUT" envDefault:"5s"`
 
+	// Bank webhooks (TDR-007, T015). BANK_WEBHOOK_SECRET is the HMAC key shared with the bank,
+	// checked by ValidateServe. With INBOX_ENABLED=false this instance still stores webhook
+	// events but does not process them.
+	BankWebhookSecret string `env:"BANK_WEBHOOK_SECRET"`
+	InboxEnabled      bool   `env:"INBOX_ENABLED"      envDefault:"true"`
+	InboxWorkers      int    `env:"INBOX_WORKERS"      envDefault:"4"`
+	InboxMaxAttempts  int    `env:"INBOX_MAX_ATTEMPTS" envDefault:"10"`
+
 	// Money limits in piasters (PRD-001 §5.6, T008); the wallet module applies them.
 	LimitTopUpMin      int64 `env:"LIMIT_TOPUP_MIN"       envDefault:"1000"`
 	LimitTopUpMax      int64 `env:"LIMIT_TOPUP_MAX"       envDefault:"3000000"`
@@ -77,6 +85,9 @@ func (cfg Wallet) ValidateServe() error {
 	if err := checkHTTPURL("BANK_BASE_URL", cfg.BankBaseURL); err != nil {
 		errs = append(errs, err)
 	}
+	if len(cfg.BankWebhookSecret) < minWebhookSecretBytes {
+		errs = append(errs, fmt.Errorf("config: BANK_WEBHOOK_SECRET must be at least %d bytes, got %d", minWebhookSecretBytes, len(cfg.BankWebhookSecret)))
+	}
 	return errors.Join(errs...)
 }
 
@@ -92,7 +103,7 @@ type Banksim struct {
 	WebhookDelay  time.Duration `env:"BANKSIM_WEBHOOK_DELAY" envDefault:"2s"`
 }
 
-// minWebhookSecretBytes is the shortest accepted webhook HMAC secret (T014).
+// minWebhookSecretBytes is the shortest accepted webhook HMAC secret (T014, T015).
 const minWebhookSecretBytes = 32
 
 func (cfg Banksim) validate() error {
@@ -191,7 +202,10 @@ func (cfg Wallet) validate() error {
 	counts := []struct {
 		name  string
 		value int
-	}{{"OUTBOX_WORKERS", cfg.OutboxWorkers}, {"OUTBOX_MAX_ATTEMPTS", cfg.OutboxMaxAttempts}}
+	}{
+		{"OUTBOX_WORKERS", cfg.OutboxWorkers}, {"OUTBOX_MAX_ATTEMPTS", cfg.OutboxMaxAttempts},
+		{"INBOX_WORKERS", cfg.InboxWorkers}, {"INBOX_MAX_ATTEMPTS", cfg.InboxMaxAttempts},
+	}
 	for _, c := range counts {
 		if c.value < 1 {
 			errs = append(errs, fmt.Errorf("config: %s must be at least 1, got %d", c.name, c.value))

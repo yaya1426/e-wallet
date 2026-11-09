@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T015 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T015-webhook-inbox` |
 | Depends on   | T011 |
@@ -91,14 +91,14 @@ The signature is checked on the **raw** body before parsing. Comparison is const
 Applying outcomes (T016/T019), the `UNKNOWN_BANK_EVENT` discrepancy (T016), multiple providers.
 
 ## Acceptance Criteria
-- [ ] AC-1 — A correctly signed event → `200`, one `PENDING` row with the raw payload; the fake handler receives it in a tx, and the row becomes `DONE`.
-- [ ] AC-2 — The same event posted 5 times → 5 × `200`, one row, the handler called once (PRD-002 AC-4).
-- [ ] AC-3 — Wrong secret, tampered body, missing header, `t` 6 minutes old or 6 minutes in the future → `401 INVALID_SIGNATURE`, nothing stored.
-- [ ] AC-4 — Malformed JSON / missing `event_id` → `400`; > 64 KB → `413`; DB unavailable → `503 TRY_AGAIN`.
-- [ ] AC-5 — Handler returns `ErrUnknownTransaction` → retried with backoff, then `DEAD` after max attempts. Unknown `event_type` → `FAILED` without calling the handler.
-- [ ] AC-6 — The handler's DB writes and its error roll back together (a handler that writes then errors leaves nothing behind, and the event is retried).
-- [ ] AC-7 — A signature produced by banksim's `Sign` (T014) verifies with `Verify` (cross-check with a fixed vector).
-- [ ] AC-8 — Config validation for the 4 variables; with `INBOX_ENABLED=false` the endpoint still stores but nothing is processed.
+- [x] AC-1 — A correctly signed event → `200`, one `PENDING` row with the raw payload; the fake handler receives it in a tx, and the row becomes `DONE`.
+- [x] AC-2 — The same event posted 5 times → 5 × `200`, one row, the handler called once (PRD-002 AC-4).
+- [x] AC-3 — Wrong secret, tampered body, missing header, `t` 6 minutes old or 6 minutes in the future → `401 INVALID_SIGNATURE`, nothing stored.
+- [x] AC-4 — Malformed JSON / missing `event_id` → `400`; > 64 KB → `413`; DB unavailable → `503 TRY_AGAIN`.
+- [x] AC-5 — Handler returns `ErrUnknownTransaction` → retried with backoff, then `DEAD` after max attempts. Unknown `event_type` → `FAILED` without calling the handler.
+- [x] AC-6 — The handler's DB writes and its error roll back together (a handler that writes then errors leaves nothing behind, and the event is retried).
+- [x] AC-7 — A signature produced by banksim's `Sign` (T014) verifies with `Verify` (cross-check with a fixed vector).
+- [x] AC-8 — Config validation for the 4 variables; with `INBOX_ENABLED=false` the endpoint still stores but nothing is processed.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -124,3 +124,7 @@ Applying outcomes (T016/T019), the `UNKNOWN_BANK_EVENT` discrepancy (T016), mult
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-05 | Ready | Planned with the phase-1 roadmap; all questions answered |
+| 2026-11-09 | In Progress | Implementation started |
+| 2026-11-09 | In Review | Implemented; verification passed (implementation.md) |
+| 2026-11-09 | Approved | Review round 1: 0 Blocker, 0 Major, 1 Minor, 2 Nits (review.md) |
+| 2026-11-09 | Done | Finalized — PR opened |

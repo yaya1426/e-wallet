@@ -24,6 +24,7 @@ import (
 	"github.com/yaya1426/e-wallet/internal/transaction"
 	"github.com/yaya1426/e-wallet/internal/transfer"
 	"github.com/yaya1426/e-wallet/internal/wallet"
+	"github.com/yaya1426/e-wallet/internal/webhook"
 )
 
 const (
@@ -69,6 +70,17 @@ func serve(ctx context.Context, environ map[string]string, stdout, stderr io.Wri
 	} else {
 		// An API-only instance: it still enqueues events, other instances deliver them.
 		log.Info("outbox delivery disabled", slog.String("reason", "OUTBOX_ENABLED=false"))
+	}
+	switch {
+	case !cfg.InboxEnabled:
+		// An API-only instance: it still stores webhook events, other instances process them.
+		log.Info("inbox processing disabled", slog.String("reason", "INBOX_ENABLED=false"))
+	case !api.inbox.HasHandler():
+		// Events are stored and wait until a handler is wired (payment, T016).
+		log.Info("inbox processing disabled", slog.String("reason", "no bank event handler"))
+	default:
+		g.Go(func() error { return api.inbox.Run(gctx) })
+		log.Info("inbox processing started", slog.Int("workers", cfg.InboxWorkers))
 	}
 	if err := g.Wait(); err != nil {
 		log.Error("wallet stopped with error", slog.Any("error", err))
@@ -182,11 +194,19 @@ type api struct {
 	history     *transaction.Handler
 	idempotency *idempotency.Service // used by the money endpoints and the cleanup job
 	outbox      *outbox.Service      // delivered by serve when OUTBOX_ENABLED
+	inbox       *webhook.Service     // processed by serve when INBOX_ENABLED and a handler is set
+	webhook     *webhook.Handler
+}
+
+// observer is what the modules report to: the metrics.
+type observer interface {
+	outbox.Observer
+	webhook.Observer
 }
 
 // newAPI wires the modules. obs (the metrics) may be nil. bcryptCost 0 means
 // identity.DefaultBcryptCost (tests pass a lower cost to stay fast).
-func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logger, obs outbox.Observer, bcryptCost int) (*api, error) {
+func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logger, obs observer, bcryptCost int) (*api, error) {
 	ledgerSvc := ledger.NewService(db, clk)
 	walletSvc := wallet.NewService(db, ledgerSvc, clk)
 	identitySvc, err := identity.NewService(db, walletSvc, clk, identity.Config{
@@ -203,6 +223,12 @@ func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logge
 	if err != nil {
 		return nil, err
 	}
+	inboxSvc, err := webhook.NewService(db.Pool(), db, clk, webhook.Config{
+		Workers: cfg.InboxWorkers, MaxAttempts: cfg.InboxMaxAttempts, PollInterval: cfg.QueuePollInterval,
+	}, log, obs)
+	if err != nil {
+		return nil, err
+	}
 	transferSvc := transfer.NewService(db, identitySvc, walletSvc, ledgerSvc, transactionSvc, idempotencySvc, limits(cfg), clk)
 	return &api{
 		identity: identity.NewHandler(identitySvc, identity.NewLoginLimiter(clk), log),
@@ -212,6 +238,8 @@ func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logge
 			walletOfUser{db: db, wallets: walletSvc}, parties{db: db, wallets: walletSvc, identity: identitySvc}, log),
 		idempotency: idempotencySvc,
 		outbox:      outboxSvc,
+		inbox:       inboxSvc,
+		webhook:     webhook.NewHandler(inboxSvc, []byte(cfg.BankWebhookSecret), clk, log, obs),
 	}, nil
 }
 
@@ -231,6 +259,7 @@ func (a *api) routes(mux *http.ServeMux) {
 	a.wallet.Routes(mux, a.identity.RequireAuth)
 	a.transfer.Routes(mux, a.identity.RequireAuth)
 	a.history.Routes(mux, a.identity.RequireAuth)
+	a.webhook.Routes(mux) // authenticated by its signature, not a user token
 }
 
 // walletOfUser adapts the wallet module to transaction.WalletOfUser.

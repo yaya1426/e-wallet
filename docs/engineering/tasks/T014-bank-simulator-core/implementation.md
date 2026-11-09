@@ -56,4 +56,4 @@ Also:
 - Timing in tests uses short real delays (ms); the fake clock drives `occurred_at` and the signature `t`.
 
 ## Follow-ups
-- Deploying the simulator on DigitalOcean (with its own `BANK_WEBHOOK_SECRET` and the public webhook URL), then pointing the wallet's `BANK_BASE_URL` at it, is not planned in any task yet. It is needed for top-ups and withdrawals to work there (T017/T018).
+- DigitalOcean (done 2026-11-09 with doctl, on the user's request): the simulator runs as an internal-only service `banksim` in the app `shark-app` (same Dockerfile, build-time `APP=banksim`, `internal_ports: [9090]`, no ingress route, so `/admin/scenarios` is not public; one instance, as its state is in memory). The wallet's `BANK_BASE_URL` is `http://banksim:9090`; the simulator's `BANKSIM_WEBHOOK_URL` is `http://e-wallet:8080/webhooks/bank`; both components share a generated `BANK_WEBHOOK_SECRET` stored as an encrypted secret. Webhooks get 404 until T015 adds the endpoint.
