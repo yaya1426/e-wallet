@@ -232,7 +232,120 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/Internal'
+  /v1/transfers:
+    post:
+      tags: [wallet]
+      operationId: sendTransfer
+      summary: Send money to another user (P2P)
+      description: |
+        Synchronous: the transfer is either completed or rejected in one database transaction
+        (PRD-004). Checks run in this order; the ones after the idempotency check (422/404/403
+        business errors) are stored for the `Idempotency-Key` and replayed for a repeat.
+
+        A replay (of a 201 or of a stored 4xx) has the header `Idempotent-Replayed: true` and
+        the first response's body, including that response's `error.request_id`. It is the
+        same JSON, but keys may come in a different order.
+
+        1. token → 401 `UNAUTHENTICATED`
+        2. body → 400 `MALFORMED_REQUEST`
+        3. key → 400 `IDEMPOTENCY_KEY_REQUIRED` / `IDEMPOTENCY_KEY_INVALID`
+        4. `amount_minor` ≤ 0 → 400 `INVALID_AMOUNT`
+        5. `currency` ≠ EGP → 400 `UNSUPPORTED_CURRENCY`
+        6. phone format → 400 `INVALID_PHONE`
+        7. note > 140 characters → 400 `INVALID_NOTE`
+        - idempotency → replay, 422 `IDEMPOTENCY_KEY_REUSED`, 409 `REQUEST_IN_PROGRESS`
+        8. amount outside the P2P range → 422 `AMOUNT_OUT_OF_RANGE`
+        9. recipient not registered → 404 `RECIPIENT_NOT_FOUND`
+        10. recipient = sender → 422 `SELF_TRANSFER_NOT_ALLOWED`
+        11. sender wallet frozen → 403 `WALLET_FROZEN`
+        12. balance too low → 422 `INSUFFICIENT_FUNDS`
+        13. daily outgoing limit → 422 `DAILY_LIMIT_EXCEEDED`
+        14. recipient balance limit → 422 `RECIPIENT_LIMIT_EXCEEDED`
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+      responses:
+        '201':
+          description: 'Transfer completed (or the replay of a completed one, with `Idempotent-Replayed: true`).'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+        '400':
+          description: '`MALFORMED_REQUEST`, `IDEMPOTENCY_KEY_REQUIRED`, `IDEMPOTENCY_KEY_INVALID`, `INVALID_AMOUNT`, `UNSUPPORTED_CURRENCY`, `INVALID_PHONE`, `INVALID_NOTE`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          description: '`WALLET_FROZEN` (sender), `USER_DISABLED`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: '`RECIPIENT_NOT_FOUND`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: '`REQUEST_IN_PROGRESS`: a request with this key is still running.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          $ref: '#/components/responses/RequestTooLarge'
+        '422':
+          description: '`IDEMPOTENCY_KEY_REUSED`, `AMOUNT_OUT_OF_RANGE`, `SELF_TRANSFER_NOT_ALLOWED`, `INSUFFICIENT_FUNDS`, `DAILY_LIMIT_EXCEEDED`, `RECIPIENT_LIMIT_EXCEEDED`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/Internal'
+        '503':
+          $ref: '#/components/responses/TryAgain'
 components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: A UUID (any version, at most 64 characters) chosen by the client per user action (TDR-005).
+      schema:
+        type: string
+        maxLength: 64
   securitySchemes:
     bearerAuth:
       type: http
@@ -240,6 +353,11 @@ components:
       bearerFormat: JWT
       description: HS256 access token from `/v1/auth/login` (TDR-011).
   headers:
+    IdempotentReplayed:
+      description: '`true` when the response is a replay of the first request with the same Idempotency-Key.'
+      schema:
+        type: string
+        enum: ['true']
     RequestID:
       description: The request ID; echoed from the request or generated (UUIDv7).
       schema:
@@ -410,5 +528,64 @@ components:
         holder_name:
           type: string
         updated_at:
+          type: string
+          format: date-time
+    TransferRequest:
+      type: object
+      additionalProperties: false
+      required: [recipient_phone, amount_minor, currency]
+      properties:
+        recipient_phone:
+          type: string
+          pattern: '^\+201[0125][0-9]{8}$'
+          examples: ['+201001234567']
+        amount_minor:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Amount in piasters (1 EGP = 100).
+          examples: [5000]
+        currency:
+          type: string
+          const: EGP
+        note:
+          type: string
+          description: Optional; at most 140 characters after trimming.
+          examples: [lunch]
+    Transfer:
+      type: object
+      required: [transaction_id, type, status, amount_minor, currency, recipient, note, balance_after_minor, created_at]
+      properties:
+        transaction_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          const: P2P
+        status:
+          type: string
+          const: COMPLETED
+        amount_minor:
+          type: integer
+          format: int64
+        currency:
+          type: string
+          const: EGP
+        recipient:
+          type: object
+          required: [phone, masked_name]
+          properties:
+            phone:
+              type: string
+            masked_name:
+              type: string
+              examples: [Ahmed M. A.]
+        note:
+          type: [string, 'null']
+        balance_after_minor:
+          type: integer
+          format: int64
+          description: The sender's available balance after the transfer.
+        created_at:
           type: string
           format: date-time

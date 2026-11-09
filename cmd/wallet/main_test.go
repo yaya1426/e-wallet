@@ -73,6 +73,7 @@ func TestServe_InvalidConfig_Exit1NamesVariable(t *testing.T) {
 		{"serve, no JWT_SECRET", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x"}, "JWT_SECRET"},
 		{"serve, 31-byte JWT_SECRET", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x", "JWT_SECRET": testJWTSecret[:31]}, "JWT_SECRET"},
 		{"serve, zero JWT_TTL", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x", "JWT_SECRET": testJWTSecret, "JWT_TTL": "0s"}, "JWT_TTL"},
+		{"serve, P2P min above max", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x", "JWT_SECRET": testJWTSecret, "LIMIT_P2P_MIN": "500", "LIMIT_P2P_MAX": "400"}, "LIMIT_P2P_MIN"},
 		{"migrate up, no DATABASE_URL", []string{"migrate", "up"}, map[string]string{}, "DATABASE_URL"},
 		{"migrate status, no DATABASE_URL", []string{"migrate", "status"}, map[string]string{}, "DATABASE_URL"},
 	}

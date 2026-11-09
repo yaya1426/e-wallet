@@ -19,6 +19,8 @@ import (
 	"github.com/yaya1426/e-wallet/internal/platform/httpserver"
 	"github.com/yaya1426/e-wallet/internal/platform/logger"
 	"github.com/yaya1426/e-wallet/internal/platform/metrics"
+	"github.com/yaya1426/e-wallet/internal/transaction"
+	"github.com/yaya1426/e-wallet/internal/transfer"
 	"github.com/yaya1426/e-wallet/internal/wallet"
 )
 
@@ -167,7 +169,8 @@ func newHandler(log *slog.Logger, m *metrics.Metrics, checks []httpserver.Readin
 type api struct {
 	identity    *identity.Handler
 	wallet      *wallet.Handler
-	idempotency *idempotency.Service // used by the money endpoints (T008+) and the cleanup job
+	transfer    *transfer.Handler
+	idempotency *idempotency.Service // used by the money endpoints and the cleanup job
 }
 
 // newAPI wires the modules. bcryptCost 0 means identity.DefaultBcryptCost (tests pass a
@@ -181,17 +184,32 @@ func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logge
 	if err != nil {
 		return nil, err
 	}
+	transactionSvc := transaction.NewService(clk)
+	idempotencySvc := idempotency.NewService(clk, cfg.IdempotencyTTL)
+	transferSvc := transfer.NewService(db, identitySvc, walletSvc, ledgerSvc, transactionSvc, idempotencySvc, limits(cfg), clk)
 	return &api{
 		identity:    identity.NewHandler(identitySvc, identity.NewLoginLimiter(clk), log),
 		wallet:      wallet.NewHandler(walletSvc, log),
-		idempotency: idempotency.NewService(clk, cfg.IdempotencyTTL),
+		transfer:    transfer.NewHandler(transferSvc, log),
+		idempotency: idempotencySvc,
 	}, nil
+}
+
+// limits maps the LIMIT_* configuration to the wallet limits (PRD-001 §5.6).
+func limits(cfg config.Wallet) wallet.Limits {
+	return wallet.Limits{
+		TopUpMin: cfg.LimitTopUpMin, TopUpMax: cfg.LimitTopUpMax,
+		WithdrawalMin: cfg.LimitWithdrawalMin, WithdrawalMax: cfg.LimitWithdrawalMax,
+		P2PMin: cfg.LimitP2PMin, P2PMax: cfg.LimitP2PMax,
+		MaxBalance: cfg.LimitMaxBalance, DailyOutgoing: cfg.LimitDailyOutgoing,
+	}
 }
 
 // routes mounts every business endpoint.
 func (a *api) routes(mux *http.ServeMux) {
 	a.identity.Routes(mux)
 	a.wallet.Routes(mux, a.identity.RequireAuth)
+	a.transfer.Routes(mux, a.identity.RequireAuth)
 }
 
 // readinessChecks reports the database connection and whether migrations are applied

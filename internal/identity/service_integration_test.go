@@ -200,13 +200,13 @@ func TestGetUser(t *testing.T) {
 
 	byID, err := svc.GetUser(ctx, reg.User.ID)
 	require.NoError(t, err)
-	byPhone, err := svc.GetUserByPhone(ctx, "+201001234567")
+	byPhone, err := svc.GetUserByPhone(ctx, f.db.Pool(), "+201001234567")
 	require.NoError(t, err)
 	assert.Equal(t, byID, byPhone)
 
 	_, err = svc.GetUser(ctx, uuid.New())
 	assert.ErrorIs(t, err, identity.ErrUserNotFound)
-	_, err = svc.GetUserByPhone(ctx, "+201009999999")
+	_, err = svc.GetUserByPhone(ctx, f.db.Pool(), "+201009999999")
 	assert.ErrorIs(t, err, identity.ErrUserNotFound)
 }
 

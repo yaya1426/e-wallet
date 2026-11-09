@@ -29,6 +29,16 @@ type Wallet struct {
 	IdempotencyTTL             time.Duration `env:"IDEMPOTENCY_TTL"              envDefault:"24h"`
 	IdempotencyCleanupInterval time.Duration `env:"IDEMPOTENCY_CLEANUP_INTERVAL" envDefault:"1h"`
 
+	// Money limits in piasters (PRD-001 §5.6, T008); the wallet module applies them.
+	LimitTopUpMin      int64 `env:"LIMIT_TOPUP_MIN"       envDefault:"1000"`
+	LimitTopUpMax      int64 `env:"LIMIT_TOPUP_MAX"       envDefault:"3000000"`
+	LimitWithdrawalMin int64 `env:"LIMIT_WITHDRAWAL_MIN"  envDefault:"1000"`
+	LimitWithdrawalMax int64 `env:"LIMIT_WITHDRAWAL_MAX"  envDefault:"3000000"`
+	LimitP2PMin        int64 `env:"LIMIT_P2P_MIN"         envDefault:"100"`
+	LimitP2PMax        int64 `env:"LIMIT_P2P_MAX"         envDefault:"3000000"`
+	LimitMaxBalance    int64 `env:"LIMIT_MAX_BALANCE"     envDefault:"10000000"`
+	LimitDailyOutgoing int64 `env:"LIMIT_DAILY_OUTGOING"  envDefault:"6000000"`
+
 	// Access tokens (TDR-011). Only `serve` needs them, so they are checked by ValidateServe:
 	// the migrate commands (e.g. the pre-deploy job) run without a JWT secret.
 	JWTSecret string        `env:"JWT_SECRET"`
@@ -96,6 +106,33 @@ func (cfg Wallet) validate() error {
 	for _, p := range positive {
 		if p.value <= 0 {
 			errs = append(errs, fmt.Errorf("config: %s must be positive, got %s", p.name, p.value))
+		}
+	}
+	limits := []struct {
+		name  string
+		value int64
+	}{
+		{"LIMIT_TOPUP_MIN", cfg.LimitTopUpMin}, {"LIMIT_TOPUP_MAX", cfg.LimitTopUpMax},
+		{"LIMIT_WITHDRAWAL_MIN", cfg.LimitWithdrawalMin}, {"LIMIT_WITHDRAWAL_MAX", cfg.LimitWithdrawalMax},
+		{"LIMIT_P2P_MIN", cfg.LimitP2PMin}, {"LIMIT_P2P_MAX", cfg.LimitP2PMax},
+		{"LIMIT_MAX_BALANCE", cfg.LimitMaxBalance}, {"LIMIT_DAILY_OUTGOING", cfg.LimitDailyOutgoing},
+	}
+	for _, l := range limits {
+		if l.value <= 0 {
+			errs = append(errs, fmt.Errorf("config: %s must be positive, got %d", l.name, l.value))
+		}
+	}
+	ranges := []struct {
+		minName, maxName string
+		lo, hi           int64
+	}{
+		{"LIMIT_TOPUP_MIN", "LIMIT_TOPUP_MAX", cfg.LimitTopUpMin, cfg.LimitTopUpMax},
+		{"LIMIT_WITHDRAWAL_MIN", "LIMIT_WITHDRAWAL_MAX", cfg.LimitWithdrawalMin, cfg.LimitWithdrawalMax},
+		{"LIMIT_P2P_MIN", "LIMIT_P2P_MAX", cfg.LimitP2PMin, cfg.LimitP2PMax},
+	}
+	for _, r := range ranges {
+		if r.lo > r.hi {
+			errs = append(errs, fmt.Errorf("config: %s (%d) must not exceed %s (%d)", r.minName, r.lo, r.maxName, r.hi))
 		}
 	}
 	if cfg.DBTxMaxRetries < 0 {

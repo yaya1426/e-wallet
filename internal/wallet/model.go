@@ -42,6 +42,10 @@ type View struct {
 }
 
 var (
+	// ErrFrozen means the wallet is FROZEN and cannot send, withdraw or top up (PRD-001 BR-8).
+	ErrFrozen = errors.New("wallet: frozen")
+	// ErrInsufficientFunds means the available balance is lower than the amount.
+	ErrInsufficientFunds = errors.New("wallet: insufficient funds")
 	// ErrNotFound means the user has no wallet.
 	ErrNotFound = errors.New("wallet: not found")
 	// ErrMissingUserID means a wallet was requested without a user ID.
