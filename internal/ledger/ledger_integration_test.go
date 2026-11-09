@@ -27,6 +27,10 @@ type fixture struct {
 	db    *database.DB
 	svc   *ledger.Service
 	clock *clocktest.Fake
+	// seedUser and seedWallet own the transactions created by txnID: since T006 every
+	// journal entry needs a transactions row (FK), and this package may not import the
+	// modules that own users, wallets and transactions, so it seeds them with SQL.
+	seedUser, seedWallet uuid.UUID
 }
 
 // setup migrates a fresh database. Unless skipIntegrity is set, the ledger integrity
@@ -46,7 +50,36 @@ func setup(t *testing.T, skipIntegrity ...bool) fixture {
 		t.Cleanup(func() { ledgertest.AssertIntegrity(t, db) })
 	}
 	fake := clocktest.New(time.Date(2026, 11, 6, 10, 0, 0, 0, time.UTC))
-	return fixture{db: db, svc: ledger.NewService(db, fake), clock: fake}
+	f := fixture{db: db, svc: ledger.NewService(db, fake), clock: fake}
+	f.seedUser, f.seedWallet = uuid.New(), uuid.New()
+	require.NoError(t, db.InTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		accountID, err := f.svc.CreateUserAccount(ctx, tx, f.seedWallet)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO users (id, phone_e164, full_name, password_hash, created_at)
+			VALUES ($1, '+201000000000', 'Ledger Test', 'x', now())`, f.seedUser); err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO wallets (id, user_id, ledger_account_id, created_at, updated_at)
+			VALUES ($1, $2, $3, now(), now())`, f.seedWallet, f.seedUser, uuid.UUID(accountID))
+		return err
+	}))
+	return f
+}
+
+// txnID inserts a pending top-up for the seed wallet and returns its ID, for entries that
+// need an existing transaction. It reports failures with t.Errorf, so goroutines may call it.
+func (f fixture) txnID(t *testing.T) uuid.UUID {
+	id := uuid.New()
+	_, err := f.db.Pool().Exec(context.Background(), `INSERT INTO transactions
+		(id, type, status, initiator_user_id, destination_wallet_id, amount, idempotency_key, created_at, updated_at)
+		VALUES ($1, 'TOPUP', 'PENDING', $2, $3, 1, $4, now(), now())`, id, f.seedUser, f.seedWallet, id.String())
+	if err != nil {
+		t.Errorf("ledger test: create transaction: %v", err)
+		return uuid.Nil
+	}
+	return id
 }
 
 func egp(t *testing.T, amount int64) money.Money {
@@ -95,7 +128,7 @@ func (f fixture) fund(t *testing.T, user ledger.AccountID, amount int64) {
 	t.Helper()
 	bank := f.system(t, ledger.CodeBankSettlement)
 	_, err := f.post(context.Background(), ledger.Entry{
-		TransactionID: uuid.New(),
+		TransactionID: f.txnID(t),
 		Type:          ledger.EntryTopUpSettle,
 		Postings: []ledger.Posting{
 			{AccountID: bank.ID, Direction: ledger.Debit, Amount: egp(t, amount)},
@@ -194,7 +227,7 @@ func TestPost_TopUpSettle(t *testing.T) {
 	f := setup(t)
 	user := f.userAccount(t)
 	bank := f.system(t, ledger.CodeBankSettlement)
-	txnID := uuid.New()
+	txnID := f.txnID(t)
 
 	result, err := f.post(context.Background(), ledger.Entry{
 		TransactionID: txnID,
@@ -244,7 +277,7 @@ func TestPost_WithdrawalReserve(t *testing.T) {
 	inTransit := f.system(t, ledger.CodeWithdrawalsInTransit)
 
 	_, err := f.post(context.Background(), ledger.Entry{
-		TransactionID: uuid.New(),
+		TransactionID: f.txnID(t),
 		Type:          ledger.EntryWithdrawalReserve,
 		Postings: []ledger.Posting{
 			{AccountID: user, Direction: ledger.Debit, Amount: egp(t, 1000)},
@@ -263,7 +296,7 @@ func TestPost_InvalidEntryWritesNothing(t *testing.T) {
 	bank := f.system(t, ledger.CodeBankSettlement)
 
 	_, err := f.post(context.Background(), ledger.Entry{
-		TransactionID: uuid.New(),
+		TransactionID: f.txnID(t),
 		Type:          ledger.EntryTopUpSettle,
 		Postings: []ledger.Posting{
 			{AccountID: bank.ID, Direction: ledger.Debit, Amount: egp(t, 1000)},
@@ -283,7 +316,7 @@ func TestPost_DuplicateEntry(t *testing.T) {
 	user := f.userAccount(t)
 	bank := f.system(t, ledger.CodeBankSettlement)
 	entry := ledger.Entry{
-		TransactionID: uuid.New(),
+		TransactionID: f.txnID(t),
 		Type:          ledger.EntryTopUpSettle,
 		Postings: []ledger.Posting{
 			{AccountID: bank.ID, Direction: ledger.Debit, Amount: egp(t, 500)},
@@ -317,7 +350,7 @@ func TestPost_InsufficientBalance(t *testing.T) {
 	inTransit := f.system(t, ledger.CodeWithdrawalsInTransit)
 
 	_, err := f.post(context.Background(), ledger.Entry{
-		TransactionID: uuid.New(),
+		TransactionID: f.txnID(t),
 		Type:          ledger.EntryWithdrawalReserve,
 		Postings: []ledger.Posting{
 			{AccountID: user, Direction: ledger.Debit, Amount: egp(t, 1000)},
@@ -336,7 +369,7 @@ func TestPost_SystemAccountNegativeAllowed(t *testing.T) {
 	inTransit := f.system(t, ledger.CodeWithdrawalsInTransit)
 
 	_, err := f.post(context.Background(), ledger.Entry{
-		TransactionID: uuid.New(),
+		TransactionID: f.txnID(t),
 		Type:          ledger.EntryWithdrawalRefund,
 		Postings: []ledger.Posting{
 			{AccountID: inTransit.ID, Direction: ledger.Debit, Amount: egp(t, 300)},
@@ -354,7 +387,7 @@ func TestPost_UnknownAccount(t *testing.T) {
 	bank := f.system(t, ledger.CodeBankSettlement)
 
 	_, err := f.post(context.Background(), ledger.Entry{
-		TransactionID: uuid.New(),
+		TransactionID: f.txnID(t),
 		Type:          ledger.EntryTopUpSettle,
 		Postings: []ledger.Posting{
 			{AccountID: bank.ID, Direction: ledger.Debit, Amount: egp(t, 1)},
@@ -366,13 +399,13 @@ func TestPost_UnknownAccount(t *testing.T) {
 }
 
 // rawEntry inserts a journal entry and postings with plain SQL, bypassing Post.
-func rawEntry(ctx context.Context, tx pgx.Tx, postings ...struct {
+func rawEntry(ctx context.Context, tx pgx.Tx, txnID uuid.UUID, postings ...struct {
 	account   ledger.AccountID
 	direction string
 	amount    int64
 }) error {
 	entryID := uuid.New()
-	if _, err := tx.Exec(ctx, `INSERT INTO journal_entries (id, transaction_id, entry_type, created_at) VALUES ($1, $2, 'ADJUSTMENT', now())`, entryID, uuid.New()); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO journal_entries (id, transaction_id, entry_type, created_at) VALUES ($1, $2, 'ADJUSTMENT', now())`, entryID, txnID); err != nil {
 		return err
 	}
 	for _, p := range postings {
@@ -405,7 +438,7 @@ func TestTrigger_UnbalancedCommitFails(t *testing.T) {
 			require.NoError(t, err)
 			defer tx.Rollback(ctx) //nolint:errcheck // already ended by the failed commit
 
-			require.NoError(t, rawEntry(ctx, tx, lines...), "inserts pass; the check is deferred to commit")
+			require.NoError(t, rawEntry(ctx, tx, f.txnID(t), lines...), "inserts pass; the check is deferred to commit")
 			err = tx.Commit(ctx)
 
 			var pgErr *pgconn.PgError
@@ -456,7 +489,7 @@ func TestPost_ConcurrentCredits(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			_, err := f.post(context.Background(), ledger.Entry{
-				TransactionID: uuid.New(),
+				TransactionID: f.txnID(t),
 				Type:          ledger.EntryTopUpSettle,
 				Postings: []ledger.Posting{
 					{AccountID: bank.ID, Direction: ledger.Debit, Amount: egp(t, 100)},
@@ -486,7 +519,7 @@ func TestPost_OppositeTransfersNoDeadlock(t *testing.T) {
 
 	transfer := func(from, to ledger.AccountID) error {
 		_, err := f.post(context.Background(), ledger.Entry{
-			TransactionID: uuid.New(),
+			TransactionID: f.txnID(t),
 			Type:          ledger.EntryP2P,
 			Postings: []ledger.Posting{
 				{AccountID: from, Direction: ledger.Debit, Amount: egp(t, 10)},
@@ -650,7 +683,7 @@ func TestPost_PreLockedAndUnlockedCreditsNoDeadlock(t *testing.T) {
 	ctx := context.Background()
 	credit := func() ledger.Entry {
 		return ledger.Entry{
-			TransactionID: uuid.New(),
+			TransactionID: f.txnID(t),
 			Type:          ledger.EntryTopUpSettle,
 			Postings: []ledger.Posting{
 				{AccountID: bank, Direction: ledger.Debit, Amount: egp(t, 100)},

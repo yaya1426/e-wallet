@@ -28,6 +28,7 @@ import (
 	"github.com/yaya1426/e-wallet/internal/platform/logger"
 	"github.com/yaya1426/e-wallet/internal/platform/metrics"
 	"github.com/yaya1426/e-wallet/internal/platform/money"
+	"github.com/yaya1426/e-wallet/internal/transaction"
 )
 
 type apiFixture struct {
@@ -135,9 +136,10 @@ func TestAPI_RegisterLoginWallet(t *testing.T) {
 func TestAPI_WalletShowsLedgerBalance(t *testing.T) {
 	f := newAPIFixture(t)
 	ctx := context.Background()
-	_, walletID, token := f.registerAndLogin(t)
+	userID, walletID, token := f.registerAndLogin(t)
 
 	ledgerSvc := ledger.NewService(f.db, clock.System{})
+	txnSvc := transaction.NewService(clock.System{})
 	bank, err := ledgerSvc.GetAccountByCode(ctx, f.db.Pool(), ledger.CodeBankSettlement)
 	require.NoError(t, err)
 	user, err := ledgerSvc.GetAccountByCode(ctx, f.db.Pool(), "USER_WALLET:"+walletID)
@@ -145,8 +147,17 @@ func TestAPI_WalletShowsLedgerBalance(t *testing.T) {
 	amount, err := money.NewPositive(15075, money.EGP)
 	require.NoError(t, err)
 	require.NoError(t, f.db.InTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		_, err := ledgerSvc.Post(ctx, tx, ledger.Entry{
-			TransactionID: uuid.New(),
+		// Every entry belongs to a transaction (T006 FK): a top-up that the bank confirmed.
+		txn, err := txnSvc.Create(ctx, tx, transaction.New{
+			Type: transaction.TypeTopUp, Status: transaction.StatusPending,
+			InitiatorUserID: uuid.MustParse(userID), DestinationWalletID: uuid.MustParse(walletID),
+			Amount: amount, IdempotencyKey: "test-topup",
+		})
+		if err != nil {
+			return err
+		}
+		_, err = ledgerSvc.Post(ctx, tx, ledger.Entry{
+			TransactionID: txn.ID,
 			Type:          ledger.EntryTopUpSettle,
 			Postings: []ledger.Posting{
 				{AccountID: bank.ID, Direction: ledger.Debit, Amount: amount},
