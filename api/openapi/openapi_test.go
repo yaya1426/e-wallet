@@ -15,6 +15,7 @@ import (
 	"github.com/yaya1426/e-wallet/internal/idempotency"
 	"github.com/yaya1426/e-wallet/internal/identity"
 	"github.com/yaya1426/e-wallet/internal/platform/httpserver"
+	"github.com/yaya1426/e-wallet/internal/transaction"
 	"github.com/yaya1426/e-wallet/internal/transfer"
 	"github.com/yaya1426/e-wallet/internal/wallet"
 )
@@ -55,6 +56,8 @@ func TestSpec_DescribesTheEndpoints(t *testing.T) {
 		{"/v1/me/bank-account", "get"},
 		{"/v1/transfers", "post"},
 		{"/v1/recipients", "get"},
+		{"/v1/me/transactions", "get"},
+		{"/v1/transactions/{id}", "get"},
 	}
 	for _, tt := range tests {
 		item, ok := paths.Get(tt.path)
@@ -77,6 +80,7 @@ func TestSpec_CataloguesEveryErrorCode(t *testing.T) {
 		wallet.CodeInvalidAmount, wallet.CodeUnsupportedCurrency, wallet.CodeAmountOutOfRange, wallet.CodeWalletFrozen,
 		wallet.CodeInsufficientFunds, wallet.CodeDailyLimitExceeded, wallet.CodeRecipientLimitExceeded,
 		transfer.CodeInvalidNote, identity.CodeRecipientNotFound, identity.CodeSelfTransferNotAllowed,
+		transaction.CodeInvalidLimit, transaction.CodeInvalidCursor, transaction.CodeTransactionNotFound,
 	}
 	for _, code := range codes {
 		assert.True(t, strings.Contains(string(raw), "`"+code+"`"), "error code %s is missing from %s", code, specFile)

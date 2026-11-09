@@ -168,6 +168,111 @@ func (q *Queries) GetTransactionForUpdate(ctx context.Context, id uuid.UUID) (Tr
 	return i, err
 }
 
+const getVisibleTransaction = `-- name: GetVisibleTransaction :one
+SELECT id, type, status, initiator_user_id, source_wallet_id, destination_wallet_id, amount, currency, idempotency_key, bank_reference, bank_account_snapshot, note, failure_code, failure_message, last_reconciled_at, created_at, updated_at, completed_at FROM transactions
+ WHERE id = $1 AND (source_wallet_id = $2 OR destination_wallet_id = $2)
+`
+
+type GetVisibleTransactionParams struct {
+	ID       uuid.UUID
+	WalletID uuid.NullUUID
+}
+
+func (q *Queries) GetVisibleTransaction(ctx context.Context, arg GetVisibleTransactionParams) (Transaction, error) {
+	row := q.db.QueryRow(ctx, getVisibleTransaction, arg.ID, arg.WalletID)
+	var i Transaction
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.Status,
+		&i.InitiatorUserID,
+		&i.SourceWalletID,
+		&i.DestinationWalletID,
+		&i.Amount,
+		&i.Currency,
+		&i.IdempotencyKey,
+		&i.BankReference,
+		&i.BankAccountSnapshot,
+		&i.Note,
+		&i.FailureCode,
+		&i.FailureMessage,
+		&i.LastReconciledAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
+const listForWallet = `-- name: ListForWallet :many
+(SELECT id, type, status, initiator_user_id, source_wallet_id, destination_wallet_id, amount, currency, idempotency_key, bank_reference, bank_account_snapshot, note, failure_code, failure_message, last_reconciled_at, created_at, updated_at, completed_at FROM transactions t
+  WHERE t.source_wallet_id = $2
+    AND (NOT $3::bool OR (t.created_at, t.id) < ($4::timestamptz, $5::uuid))
+  ORDER BY t.created_at DESC, t.id DESC LIMIT $1)
+UNION ALL
+(SELECT id, type, status, initiator_user_id, source_wallet_id, destination_wallet_id, amount, currency, idempotency_key, bank_reference, bank_account_snapshot, note, failure_code, failure_message, last_reconciled_at, created_at, updated_at, completed_at FROM transactions t
+  WHERE t.destination_wallet_id = $2
+    AND (NOT $3::bool OR (t.created_at, t.id) < ($4::timestamptz, $5::uuid))
+  ORDER BY t.created_at DESC, t.id DESC LIMIT $1)
+ORDER BY created_at DESC, id DESC
+LIMIT $1
+`
+
+type ListForWalletParams struct {
+	RowLimit   int32
+	WalletID   uuid.NullUUID
+	HasCursor  bool
+	CursorTime time.Time
+	CursorID   uuid.UUID
+}
+
+// History of a wallet, newest first, keyset-paginated on (created_at, id) (TDR-013). Each half
+// uses its own index (T006); a P2P to oneself cannot exist, so there are no duplicates.
+func (q *Queries) ListForWallet(ctx context.Context, arg ListForWalletParams) ([]Transaction, error) {
+	rows, err := q.db.Query(ctx, listForWallet,
+		arg.RowLimit,
+		arg.WalletID,
+		arg.HasCursor,
+		arg.CursorTime,
+		arg.CursorID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transaction
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.Type,
+			&i.Status,
+			&i.InitiatorUserID,
+			&i.SourceWalletID,
+			&i.DestinationWalletID,
+			&i.Amount,
+			&i.Currency,
+			&i.IdempotencyKey,
+			&i.BankReference,
+			&i.BankAccountSnapshot,
+			&i.Note,
+			&i.FailureCode,
+			&i.FailureMessage,
+			&i.LastReconciledAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CompletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const sumOutgoingForDay = `-- name: SumOutgoingForDay :one
 SELECT coalesce(sum(amount), 0)::bigint
   FROM transactions

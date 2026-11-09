@@ -141,6 +141,45 @@ func (s *Service) SumPendingTopUps(ctx context.Context, q Querier, walletID uuid
 	return sum, nil
 }
 
+// Page is one page of a wallet's history, newest first. Next is nil on the last page.
+type Page struct {
+	Items []Transaction
+	Next  *Cursor
+}
+
+// ListForWallet returns up to limit transactions where the wallet is the source or the
+// destination, newest first, starting after after (nil for the first page).
+func (s *Service) ListForWallet(ctx context.Context, q Querier, walletID uuid.UUID, after *Cursor, limit int) (Page, error) {
+	params := sqlcgen.ListForWalletParams{RowLimit: int32(limit + 1), WalletID: nullUUID(walletID)} //nolint:gosec // limit ≤ 100
+	if after != nil {
+		params.HasCursor, params.CursorTime, params.CursorID = true, after.CreatedAt, after.ID
+	}
+	rows, err := queries(q).ListForWallet(ctx, params)
+	if err != nil {
+		return Page{}, fmt.Errorf("transaction: list for wallet: %w", err)
+	}
+	page := Page{Items: make([]Transaction, 0, min(len(rows), limit))}
+	for i, row := range rows {
+		if i == limit { // the extra row only tells that there is a next page
+			last := page.Items[limit-1]
+			page.Next = &Cursor{CreatedAt: last.CreatedAt, ID: last.ID}
+			break
+		}
+		txn, err := toTransaction(row)
+		if err != nil {
+			return Page{}, err
+		}
+		page.Items = append(page.Items, txn)
+	}
+	return page, nil
+}
+
+// GetVisible returns the transaction if the wallet is its source or destination, otherwise
+// ErrNotFound (PRD-001 US-5).
+func (s *Service) GetVisible(ctx context.Context, q Querier, txnID, walletID uuid.UUID) (Transaction, error) {
+	return one(queries(q).GetVisibleTransaction(ctx, sqlcgen.GetVisibleTransactionParams{ID: txnID, WalletID: nullUUID(walletID)}))
+}
+
 // now is the clock time truncated to PostgreSQL's microsecond precision, so returned
 // values equal later reads.
 func (s *Service) now() time.Time { return s.clock.Now().Truncate(time.Microsecond) }
