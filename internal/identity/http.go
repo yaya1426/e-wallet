@@ -27,6 +27,9 @@ const (
 	CodeInvalidIBAN            = "INVALID_IBAN"
 	CodeInvalidHolderName      = "INVALID_HOLDER_NAME"
 	CodeBankAccountNotFound    = "BANK_ACCOUNT_NOT_FOUND"
+	// Shared with POST /v1/transfers (T008), which imports identity.
+	CodeRecipientNotFound      = "RECIPIENT_NOT_FOUND"
+	CodeSelfTransferNotAllowed = "SELF_TRANSFER_NOT_ALLOWED"
 )
 
 // Handler serves the auth endpoints and provides the auth middleware.
@@ -47,6 +50,26 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/auth/login", h.login)
 	mux.Handle("PUT /v1/me/bank-account", h.RequireAuth(http.HandlerFunc(h.putBankAccount)))
 	mux.Handle("GET /v1/me/bank-account", h.RequireAuth(http.HandlerFunc(h.getBankAccount)))
+	mux.Handle("GET /v1/recipients", h.RequireAuth(http.HandlerFunc(h.previewRecipient)))
+}
+
+type recipientResponse struct {
+	Phone      string `json:"phone"`
+	MaskedName string `json:"masked_name"`
+}
+
+// previewRecipient answers GET /v1/recipients?phone=… with the masked name only (T009).
+func (h *Handler) previewRecipient(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.requestUser(w, r)
+	if !ok {
+		return
+	}
+	recipient, err := h.svc.PreviewRecipient(r.Context(), userID, r.URL.Query().Get("phone"))
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	httpserver.WriteJSON(w, http.StatusOK, recipientResponse(recipient))
 }
 
 type registerRequest struct {
@@ -216,6 +239,10 @@ func (h *Handler) writeError(w http.ResponseWriter, r *http.Request, err error) 
 		httpserver.WriteError(w, http.StatusBadRequest, CodeInvalidHolderName, "Holder name must be 2 to 100 characters long.")
 	case errors.Is(err, ErrBankAccountNotFound):
 		httpserver.WriteError(w, http.StatusNotFound, CodeBankAccountNotFound, "No bank account is linked yet.")
+	case errors.Is(err, ErrRecipientNotFound):
+		httpserver.WriteError(w, http.StatusNotFound, CodeRecipientNotFound, "No user is registered with this phone number.")
+	case errors.Is(err, ErrSelfRecipient):
+		httpserver.WriteError(w, http.StatusUnprocessableEntity, CodeSelfTransferNotAllowed, "You cannot send money to yourself.")
 	case errors.Is(err, ErrUnauthenticated):
 		httpserver.WriteError(w, http.StatusUnauthorized, CodeUnauthenticated, "Missing or invalid access token.")
 	case errors.Is(err, database.ErrTryAgain):

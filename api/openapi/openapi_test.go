@@ -54,6 +54,7 @@ func TestSpec_DescribesTheEndpoints(t *testing.T) {
 		{"/v1/me/bank-account", "put"},
 		{"/v1/me/bank-account", "get"},
 		{"/v1/transfers", "post"},
+		{"/v1/recipients", "get"},
 	}
 	for _, tt := range tests {
 		item, ok := paths.Get(tt.path)
@@ -75,7 +76,7 @@ func TestSpec_CataloguesEveryErrorCode(t *testing.T) {
 		idempotency.CodeKeyRequired, idempotency.CodeKeyInvalid, idempotency.CodeKeyReused, idempotency.CodeRequestInProgress,
 		wallet.CodeInvalidAmount, wallet.CodeUnsupportedCurrency, wallet.CodeAmountOutOfRange, wallet.CodeWalletFrozen,
 		wallet.CodeInsufficientFunds, wallet.CodeDailyLimitExceeded, wallet.CodeRecipientLimitExceeded,
-		transfer.CodeInvalidNote, transfer.CodeRecipientNotFound, transfer.CodeSelfTransferNotAllowed,
+		transfer.CodeInvalidNote, identity.CodeRecipientNotFound, identity.CodeSelfTransferNotAllowed,
 	}
 	for _, code := range codes {
 		assert.True(t, strings.Contains(string(raw), "`"+code+"`"), "error code %s is missing from %s", code, specFile)

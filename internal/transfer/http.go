@@ -15,12 +15,9 @@ import (
 	"github.com/yaya1426/e-wallet/internal/wallet"
 )
 
-// Error codes of POST /v1/transfers (T008) besides the shared wallet and identity codes.
-const (
-	CodeInvalidNote            = "INVALID_NOTE"
-	CodeRecipientNotFound      = "RECIPIENT_NOT_FOUND"
-	CodeSelfTransferNotAllowed = "SELF_TRANSFER_NOT_ALLOWED"
-)
+// CodeInvalidNote is the only error code of POST /v1/transfers (T008) besides the shared
+// wallet and identity codes.
+const CodeInvalidNote = "INVALID_NOTE"
 
 // Handler serves POST /v1/transfers.
 type Handler struct {
@@ -156,8 +153,8 @@ type businessError struct {
 
 var businessErrors = []businessError{
 	{wallet.ErrAmountOutOfRange, http.StatusUnprocessableEntity, wallet.CodeAmountOutOfRange, "The amount is outside the allowed range for transfers."},
-	{ErrRecipientNotFound, http.StatusNotFound, CodeRecipientNotFound, "No user is registered with this phone number."},
-	{ErrSelfTransfer, http.StatusUnprocessableEntity, CodeSelfTransferNotAllowed, "You cannot send money to yourself."},
+	{ErrRecipientNotFound, http.StatusNotFound, identity.CodeRecipientNotFound, "No user is registered with this phone number."},
+	{ErrSelfTransfer, http.StatusUnprocessableEntity, identity.CodeSelfTransferNotAllowed, "You cannot send money to yourself."},
 	{wallet.ErrFrozen, http.StatusForbidden, wallet.CodeWalletFrozen, "Your wallet is frozen."},
 	{wallet.ErrInsufficientFunds, http.StatusUnprocessableEntity, wallet.CodeInsufficientFunds, "Available balance is too low."},
 	{wallet.ErrDailyLimitExceeded, http.StatusUnprocessableEntity, wallet.CodeDailyLimitExceeded, "This would exceed your daily outgoing limit."},
