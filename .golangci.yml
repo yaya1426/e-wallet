@@ -233,6 +233,36 @@ linters:
               desc: outbox imports only internal/platform
             - pkg: github.com/yaya1426/e-wallet/internal/banksim
               desc: outbox imports only internal/platform
+        # bank (the port and its adapters) imports only internal/platform (T013).
+        bank-deps:
+          files:
+            - "**/internal/bank/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/yaya1426/e-wallet/internal/identity
+              desc: bank imports only internal/platform
+            - pkg: github.com/yaya1426/e-wallet/internal/wallet
+              desc: bank imports only internal/platform
+            - pkg: github.com/yaya1426/e-wallet/internal/ledger
+              desc: bank imports only internal/platform
+            - pkg: github.com/yaya1426/e-wallet/internal/transaction
+              desc: bank imports only internal/platform
+            - pkg: github.com/yaya1426/e-wallet/internal/payment
+              desc: bank imports only internal/platform
+            - pkg: github.com/yaya1426/e-wallet/internal/transfer
+              desc: bank imports only internal/platform
+            - pkg: github.com/yaya1426/e-wallet/internal/idempotency
+              desc: bank imports only internal/platform
+            - pkg: github.com/yaya1426/e-wallet/internal/outbox
+              desc: bank imports only internal/platform
+            - pkg: github.com/yaya1426/e-wallet/internal/webhook
+              desc: bank imports only internal/platform
+            - pkg: github.com/yaya1426/e-wallet/internal/reconciliation
+              desc: bank imports only internal/platform
+            - pkg: github.com/yaya1426/e-wallet/internal/discrepancy
+              desc: bank imports only internal/platform
+            - pkg: github.com/yaya1426/e-wallet/internal/banksim
+              desc: bank imports only internal/platform
         # transfer orchestrates wallet, transaction, ledger, identity and idempotency (T008).
         transfer-deps:
           files:

@@ -68,3 +68,15 @@ func TestMetrics_Outbox(t *testing.T) {
 	assert.Contains(t, body, "outbox_oldest_pending_age_seconds 90")
 	assert.Contains(t, body, "outbox_dead_total 2")
 }
+
+func TestMetrics_Bank(t *testing.T) {
+	m := New()
+	m.ObserveBankCall("create_debit", "ok", 20*time.Millisecond)
+	m.ObserveBankCall("create_debit", "temporary", 5*time.Second)
+
+	rec := httptest.NewRecorder()
+	m.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := rec.Body.String()
+	assert.Contains(t, body, `bank_call_duration_seconds_count{op="create_debit",result="ok"} 1`)
+	assert.Contains(t, body, `bank_call_duration_seconds_count{op="create_debit",result="temporary"} 1`)
+}

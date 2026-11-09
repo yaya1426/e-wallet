@@ -83,7 +83,7 @@ func newAPIFixtureWith(t *testing.T, clk clock.Clock, extraEnv map[string]string
 	t.Cleanup(db.Close)
 	t.Cleanup(func() { ledgertest.AssertIntegrity(t, db) })
 
-	environ := map[string]string{"DATABASE_URL": url, "JWT_SECRET": "integration-secret-at-least-32-bytes-long"}
+	environ := map[string]string{"DATABASE_URL": url, "JWT_SECRET": "integration-secret-at-least-32-bytes-long", "BANK_BASE_URL": testBankURL}
 	for k, v := range extraEnv {
 		environ[k] = v
 	}

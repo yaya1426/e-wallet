@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T013 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T013-bank-gateway-port` |
 | Depends on   | T002 |
@@ -29,7 +29,7 @@ mapping below, `GetStatement` waits for phase 2.
 | `internal/bank/banksim/client.go` | HTTP adapter (`net/http`, no third-party client) |
 | `internal/bank/banktest/fake.go` | In-memory `Gateway` with scripted responses per call and recorded calls |
 | `api/openapi/banksim.yaml` | Simulator contract |
-| `internal/platform/config` | `BANK_BASE_URL` (required, absolute http(s) URL), `BANK_HTTP_TIMEOUT=5s` (> 0) |
+| `internal/platform/config` | `BANK_BASE_URL` (required by `serve` only, checked in `ValidateServe` like `JWT_SECRET`; absolute http(s) URL), `BANK_HTTP_TIMEOUT=5s` (> 0) |
 | `configs/.env.example`, `docker-compose.yml` | `BANK_BASE_URL=http://banksim:9090` |
 | `.golangci.yml` | depguard: `bank` imports only platform |
 
@@ -85,13 +85,13 @@ A repeated `Idempotency-Key` with the same body returns the original response.
 `GetStatement` / settlement balance (phase 2), the simulator itself (T014), callers (T017/T018).
 
 ## Acceptance Criteria
-- [ ] AC-1 — Against an `httptest` server: `CreateDebit` sends `POST /v1/debits` with `Idempotency-Key` = the UUID, a JSON body with `amount_minor`/`currency`/`iban`/`holder_name`/`reference`, and returns the `bank_reference` from a 202. Same for `CreatePayout`.
-- [ ] AC-2 — Each row of the mapping table produces the listed result (`errors.As` for `*RejectedError`, `errors.Is` for `ErrTemporary`/`ErrNotFound`).
-- [ ] AC-3 — A server slower than `BANK_HTTP_TIMEOUT` → `ErrTemporary` within about the timeout.
-- [ ] AC-4 — `GetOperation` parses all fields into `Operation` (amount as `money.Money`).
-- [ ] AC-5 — `bank_call_duration_seconds` is observed with `op` and `result` labels.
-- [ ] AC-6 — Config: `BANK_BASE_URL` missing/invalid or `BANK_HTTP_TIMEOUT` ≤ 0 → error naming the variable.
-- [ ] AC-7 — `api/openapi/banksim.yaml` passes the same OpenAPI lint as `wallet.yaml`.
+- [x] AC-1 — Against an `httptest` server: `CreateDebit` sends `POST /v1/debits` with `Idempotency-Key` = the UUID, a JSON body with `amount_minor`/`currency`/`iban`/`holder_name`/`reference`, and returns the `bank_reference` from a 202. Same for `CreatePayout`.
+- [x] AC-2 — Each row of the mapping table produces the listed result (`errors.As` for `*RejectedError`, `errors.Is` for `ErrTemporary`/`ErrNotFound`).
+- [x] AC-3 — A server slower than `BANK_HTTP_TIMEOUT` → `ErrTemporary` within about the timeout.
+- [x] AC-4 — `GetOperation` parses all fields into `Operation` (amount as `money.Money`).
+- [x] AC-5 — `bank_call_duration_seconds` is observed with `op` and `result` labels.
+- [x] AC-6 — Config: `BANK_BASE_URL` missing/invalid or `BANK_HTTP_TIMEOUT` ≤ 0 → error naming the variable.
+- [x] AC-7 — `api/openapi/banksim.yaml` passes the same OpenAPI lint as `wallet.yaml`.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -107,13 +107,19 @@ A repeated `Idempotency-Key` with the same body returns the original response.
 | # | Question | Options (recommended first) | Status | Answer |
 |---|----------|-----------------------------|--------|--------|
 | 1 | Timeout and error mapping | defaults / all 4xx temporary | Answered | Defaults |
+| 2 | Where is `BANK_BASE_URL` required? (DigitalOcean sets neither it nor a simulator yet) | serve only, user sets it on DO / serve only, set via doctl / every command | Answered | Serve only (`ValidateServe`). `BANK_BASE_URL=http://banksim:9090` was added to the DO e-wallet service with doctl on 2026-11-09 (user-approved; a placeholder until T014 deploys the simulator) |
 
 ## Decisions Log
 | Date | Decision | Decided by | Docs updated |
 |------|----------|-----------|--------------|
+| 2026-11-09 | `BANK_BASE_URL` is checked by `serve` only, so the migrate pre-deploy job runs without it; set on DigitalOcean via doctl (user-approved) | Yahya | this task |
 | 2026-11-05 | `BANK_HTTP_TIMEOUT=5s`; 4xx → rejected except 408/429; 5xx/timeout → temporary; 404 op → not found; `GetStatement` phase 2; fake in `bank/banktest` | Yahya | this task |
 
 ## Status Log
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-05 | Ready | Planned with the phase-1 roadmap; all questions answered |
+| 2026-11-09 | In Progress | Open question 2 answered (BANK_BASE_URL serve-only); implementation started on top of T012 |
+| 2026-11-09 | In Review | Implemented and verified; see implementation.md |
+| 2026-11-09 | Approved | Review round 1: Approved (1 Nit) |
+| 2026-11-09 | Done | Finalized — PR opened with GitHub auto-merge |

@@ -141,9 +141,10 @@ func TestServe_CancelledContext_ExitsZero(t *testing.T) {
 	done := make(chan int, 1)
 	go func() {
 		done <- run(ctx, []string{"serve"}, map[string]string{
-			"DATABASE_URL": url,
-			"HTTP_ADDR":    "127.0.0.1:0",
-			"JWT_SECRET":   testJWTSecret,
+			"DATABASE_URL":  url,
+			"HTTP_ADDR":     "127.0.0.1:0",
+			"JWT_SECRET":    testJWTSecret,
+			"BANK_BASE_URL": testBankURL,
 		}, io.Discard, io.Discard)
 	}()
 
@@ -183,7 +184,7 @@ func TestServe_OutboxDisabled(t *testing.T) {
 		done := make(chan int, 1)
 		go func() {
 			done <- run(ctx, []string{"serve"}, map[string]string{
-				"DATABASE_URL": url, "HTTP_ADDR": "127.0.0.1:0", "JWT_SECRET": testJWTSecret,
+				"DATABASE_URL": url, "HTTP_ADDR": "127.0.0.1:0", "JWT_SECRET": testJWTSecret, "BANK_BASE_URL": testBankURL,
 				"OUTBOX_ENABLED": enabled, "QUEUE_POLL_INTERVAL": "50ms",
 			}, &out, io.Discard)
 		}()

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"reflect"
 	"strings"
 	"time"
@@ -37,6 +38,11 @@ type Wallet struct {
 	OutboxMaxAttempts int           `env:"OUTBOX_MAX_ATTEMPTS" envDefault:"10"`
 	QueuePollInterval time.Duration `env:"QUEUE_POLL_INTERVAL" envDefault:"500ms"`
 
+	// Bank gateway (TDR-008, T013). BANK_BASE_URL is checked by ValidateServe: the migrate
+	// commands run without it.
+	BankBaseURL     string        `env:"BANK_BASE_URL"`
+	BankHTTPTimeout time.Duration `env:"BANK_HTTP_TIMEOUT" envDefault:"5s"`
+
 	// Money limits in piasters (PRD-001 §5.6, T008); the wallet module applies them.
 	LimitTopUpMin      int64 `env:"LIMIT_TOPUP_MIN"       envDefault:"1000"`
 	LimitTopUpMax      int64 `env:"LIMIT_TOPUP_MAX"       envDefault:"3000000"`
@@ -67,6 +73,11 @@ func (cfg Wallet) ValidateServe() error {
 	} else if cfg.JWTTTL%time.Second != 0 {
 		// The login response reports expires_in in whole seconds.
 		errs = append(errs, fmt.Errorf("config: JWT_TTL must be whole seconds, got %s", cfg.JWTTTL))
+	}
+	if u, err := url.Parse(cfg.BankBaseURL); cfg.BankBaseURL == "" {
+		errs = append(errs, errors.New("config: BANK_BASE_URL is required"))
+	} else if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		errs = append(errs, fmt.Errorf("config: BANK_BASE_URL must be an absolute http(s) URL, got %q", cfg.BankBaseURL))
 	}
 	return errors.Join(errs...)
 }
@@ -111,6 +122,7 @@ func (cfg Wallet) validate() error {
 		{"IDEMPOTENCY_TTL", cfg.IdempotencyTTL},
 		{"IDEMPOTENCY_CLEANUP_INTERVAL", cfg.IdempotencyCleanupInterval},
 		{"QUEUE_POLL_INTERVAL", cfg.QueuePollInterval},
+		{"BANK_HTTP_TIMEOUT", cfg.BankHTTPTimeout},
 	}
 	for _, p := range positive {
 		if p.value <= 0 {

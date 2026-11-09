@@ -24,6 +24,7 @@ type Metrics struct {
 	outboxPending   prometheus.Gauge
 	outboxOldestAge prometheus.Gauge
 	outboxDead      prometheus.Counter
+	bankCalls       *prometheus.HistogramVec
 }
 
 // New creates the registry and registers all collectors.
@@ -73,7 +74,13 @@ func New() *Metrics {
 		Name: "outbox_dead_total",
 		Help: "Outbox events that became DEAD after the last attempt.",
 	})
+	m.bankCalls = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "bank_call_duration_seconds",
+		Help:    "Bank gateway call duration, by operation and result (ok, rejected, temporary, not_found).",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"op", "result"})
 	m.registry.MustRegister(
+		m.bankCalls,
 		m.queueJobs, m.queueClaimed, m.queueDuration,
 		m.outboxPending, m.outboxOldestAge, m.outboxDead,
 		collectors.NewGoCollector(),
@@ -131,4 +138,9 @@ func (m *Metrics) ObserveOutboxBacklog(pending int64, oldestAge time.Duration) {
 // ObserveOutboxDead counts one DEAD outbox event (outbox.Observer).
 func (m *Metrics) ObserveOutboxDead() {
 	m.outboxDead.Inc()
+}
+
+// ObserveBankCall records one bank gateway call (banksim.Observer).
+func (m *Metrics) ObserveBankCall(op, result string, duration time.Duration) {
+	m.bankCalls.WithLabelValues(op, result).Observe(duration.Seconds())
 }
