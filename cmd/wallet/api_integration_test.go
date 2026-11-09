@@ -92,7 +92,7 @@ func newAPIFixtureWith(t *testing.T, clk clock.Clock, extraEnv map[string]string
 	require.NoError(t, cfg.ValidateServe())
 
 	log := logger.New(io.Discard, slog.LevelInfo)
-	a, err := newAPI(db, cfg, clk, log, bcrypt.MinCost)
+	a, err := newAPI(db, cfg, clk, log, nil, bcrypt.MinCost)
 	require.NoError(t, err)
 	srv := httptest.NewServer(newHandler(log, metrics.New(), nil, a.routes))
 	t.Cleanup(srv.Close)

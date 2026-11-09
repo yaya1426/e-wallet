@@ -55,6 +55,22 @@ type LedgerAccount struct {
 	UpdatedAt  time.Time
 }
 
+type OutboxEvent struct {
+	ID            uuid.UUID
+	AggregateType string
+	AggregateID   uuid.UUID
+	EventType     string
+	Payload       []byte
+	Status        string
+	Attempts      int32
+	NextAttemptAt time.Time
+	LockedBy      pgtype.Text
+	LockedUntil   pgtype.Timestamptz
+	LastError     pgtype.Text
+	CreatedAt     time.Time
+	ProcessedAt   pgtype.Timestamptz
+}
+
 type Posting struct {
 	ID             uuid.UUID
 	JournalEntryID uuid.UUID

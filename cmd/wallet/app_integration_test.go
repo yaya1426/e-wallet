@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -155,6 +156,56 @@ func TestServe_CancelledContext_ExitsZero(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("serve did not stop after cancel")
 	}
+}
+
+// TestServe_OutboxDisabled: with OUTBOX_ENABLED=false serve does not deliver outbox events;
+// with the default it does (AC-8).
+func TestServe_OutboxDisabled(t *testing.T) {
+	url := databasetest.Shared(t).NewDatabase(t)
+	code, _, stderr := runCLI(t, map[string]string{"DATABASE_URL": url}, "migrate", "up")
+	require.Equal(t, exitOK, code, stderr)
+	db, err := database.Open(context.Background(), url, database.Options{Tx: database.DefaultTxSettings()})
+	require.NoError(t, err)
+	defer db.Close()
+	// A due event of a type no handler knows yet: delivering it means claiming it (attempts + 1).
+	_, err = db.Pool().Exec(context.Background(), `INSERT INTO outbox_events
+		(id, aggregate_type, aggregate_id, event_type, payload, status, next_attempt_at, created_at)
+		VALUES (gen_random_uuid(), 'transaction', gen_random_uuid(), 'test.event', '{}', 'PENDING', now() - interval '1 second', now())`)
+	require.NoError(t, err)
+	attempts := func() int {
+		var n int
+		require.NoError(t, db.Pool().QueryRow(context.Background(), `SELECT attempts FROM outbox_events`).Scan(&n))
+		return n
+	}
+	serveFor := func(enabled string, until func() bool) string {
+		ctx, cancel := context.WithCancel(context.Background())
+		var out bytes.Buffer
+		done := make(chan int, 1)
+		go func() {
+			done <- run(ctx, []string{"serve"}, map[string]string{
+				"DATABASE_URL": url, "HTTP_ADDR": "127.0.0.1:0", "JWT_SECRET": testJWTSecret,
+				"OUTBOX_ENABLED": enabled, "QUEUE_POLL_INTERVAL": "50ms",
+			}, &out, io.Discard)
+		}()
+		until()
+		cancel()
+		select {
+		case code := <-done:
+			require.Equal(t, exitOK, code)
+		case <-time.After(15 * time.Second):
+			t.Fatal("serve did not stop after cancel")
+		}
+		return out.String()
+	}
+
+	logs := serveFor("false", func() bool { time.Sleep(time.Second); return true })
+	assert.Equal(t, 0, attempts(), "a disabled instance does not claim events")
+	assert.Contains(t, logs, "outbox delivery disabled")
+
+	logs = serveFor("true", func() bool {
+		return assert.Eventually(t, func() bool { return attempts() >= 1 }, 10*time.Second, 20*time.Millisecond)
+	})
+	assert.Contains(t, logs, "outbox delivery started")
 }
 
 // latestMigration counts the embedded up migrations; versions are sequential from 1 (TDR-014).

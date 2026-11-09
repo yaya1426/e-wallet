@@ -21,6 +21,9 @@ type Metrics struct {
 	queueJobs       *prometheus.CounterVec
 	queueClaimed    *prometheus.CounterVec
 	queueDuration   *prometheus.HistogramVec
+	outboxPending   prometheus.Gauge
+	outboxOldestAge prometheus.Gauge
+	outboxDead      prometheus.Counter
 }
 
 // New creates the registry and registers all collectors.
@@ -58,8 +61,21 @@ func New() *Metrics {
 		Help:    "Time spent in queue handlers, by queue.",
 		Buckets: prometheus.DefBuckets,
 	}, []string{"queue"})
+	m.outboxPending = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "outbox_pending_total",
+		Help: "Outbox events not finished yet (PENDING or PROCESSING).",
+	})
+	m.outboxOldestAge = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "outbox_oldest_pending_age_seconds",
+		Help: "Age of the oldest unfinished outbox event (0 when there is none).",
+	})
+	m.outboxDead = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "outbox_dead_total",
+		Help: "Outbox events that became DEAD after the last attempt.",
+	})
 	m.registry.MustRegister(
 		m.queueJobs, m.queueClaimed, m.queueDuration,
+		m.outboxPending, m.outboxOldestAge, m.outboxDead,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		m.requests,
@@ -104,4 +120,15 @@ func (m *Metrics) ObserveQueueClaimed(queue string, n int) {
 func (m *Metrics) ObserveQueueJob(queue, result string, handlerDuration time.Duration) {
 	m.queueJobs.WithLabelValues(queue, result).Inc()
 	m.queueDuration.WithLabelValues(queue).Observe(handlerDuration.Seconds())
+}
+
+// ObserveOutboxBacklog sets the outbox backlog gauges (outbox.Observer).
+func (m *Metrics) ObserveOutboxBacklog(pending int64, oldestAge time.Duration) {
+	m.outboxPending.Set(float64(pending))
+	m.outboxOldestAge.Set(oldestAge.Seconds())
+}
+
+// ObserveOutboxDead counts one DEAD outbox event (outbox.Observer).
+func (m *Metrics) ObserveOutboxDead() {
+	m.outboxDead.Inc()
 }
