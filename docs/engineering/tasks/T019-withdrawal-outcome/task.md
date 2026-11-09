@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T019 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T019-withdrawal-outcome` |
 | Depends on   | T016, T018 |
@@ -51,14 +51,14 @@ T016 for kind mismatch, contradicting terminal state, agreeing terminal state, a
 Reconciliation-driven outcomes and `STUCK` (phase 2).
 
 ## Acceptance Criteria
-- [ ] AC-1 — `PROCESSING` withdrawal of 20 000 + `payout.succeeded` → `COMPLETED`; one `WITHDRAWAL_SETTLE`; in-transit −20 000; `BANK_SETTLEMENT` −20 000; wallet unchanged (PRD-003 AC-3).
-- [ ] AC-2 — `payout.failed` (`ACCOUNT_CLOSED`) → `FAILED` with that code; one `WITHDRAWAL_REFUND`; wallet +20 000; in-transit −20 000 (AC-4).
-- [ ] AC-3 — Repeated identical outcome → no-op; contradicting outcome after terminal → one `STATUS_MISMATCH`, no money change (AC-5).
-- [ ] AC-4 — Amount mismatch → `AMOUNT_MISMATCH`, still `PROCESSING`, money stays reserved.
-- [ ] AC-5 — Frozen wallet + `payout.failed` → refund still credited.
-- [ ] AC-6 — `PENDING` withdrawal (no reference yet) + `payout.succeeded` by idempotency key → `PROCESSING` then `COMPLETED`.
-- [ ] AC-7 — The in-transit invariant (T018 AC-8) and ledger integrity hold after every scenario.
-- [ ] AC-8 — End to end on compose: top up, then withdraw with `…0000` → `COMPLETED`; with `…0001` → `FAILED ACCOUNT_CLOSED` and the balance is back; with `…0002` → `FAILED INVALID_ACCOUNT` and the balance is back.
+- [x] AC-1 — `PROCESSING` withdrawal of 20 000 + `payout.succeeded` → `COMPLETED`; one `WITHDRAWAL_SETTLE`; in-transit −20 000; `BANK_SETTLEMENT` −20 000; wallet unchanged (PRD-003 AC-3).
+- [x] AC-2 — `payout.failed` (`ACCOUNT_CLOSED`) → `FAILED` with that code; one `WITHDRAWAL_REFUND`; wallet +20 000; in-transit −20 000 (AC-4).
+- [x] AC-3 — Repeated identical outcome → no-op; contradicting outcome after terminal → one `STATUS_MISMATCH`, no money change (AC-5).
+- [x] AC-4 — Amount mismatch → `AMOUNT_MISMATCH`, still `PROCESSING`, money stays reserved.
+- [x] AC-5 — Frozen wallet + `payout.failed` → refund still credited.
+- [x] AC-6 — `PENDING` withdrawal (no reference yet) + `payout.succeeded` by idempotency key → `PROCESSING` then `COMPLETED`.
+- [x] AC-7 — The in-transit invariant (T018 AC-8) and ledger integrity hold after every scenario.
+- [x] AC-8 — End to end on compose: top up, then withdraw with `…0000` → `COMPLETED`; with `…0001` → `FAILED ACCOUNT_CLOSED` and the balance is back; with `…0002` → `FAILED INVALID_ACCOUNT` and the balance is back.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -81,3 +81,7 @@ Reconciliation-driven outcomes and `STUCK` (phase 2).
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-05 | Ready | Planned with the phase-1 roadmap; no open questions |
+| 2026-11-09 | In Progress | Implementation started (on top of T018, PR #20) |
+| 2026-11-09 | In Review | Implemented; verification passed (implementation.md) |
+| 2026-11-09 | Approved | Review round 1: 0 Blocker, 0 Major, 0 Minor, 1 Nit (review.md) |
+| 2026-11-09 | Done | Finalized — PR opened |
