@@ -150,7 +150,7 @@ func TestMigration_LedgerSchemaAndSeed(t *testing.T) {
 	require.NoError(t, err)
 	status, err := migrator.Status(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, uint(2), status.Version)
+	assert.GreaterOrEqual(t, status.Version, uint(2), "the ledger migration (000002) is applied")
 }
 
 func TestCreateUserAccount(t *testing.T) {

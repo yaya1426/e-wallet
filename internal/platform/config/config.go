@@ -23,6 +23,29 @@ type Wallet struct {
 	DBLockTimeout      time.Duration `env:"DB_LOCK_TIMEOUT"      envDefault:"2s"`
 	DBStatementTimeout time.Duration `env:"DB_STATEMENT_TIMEOUT" envDefault:"5s"`
 	DBTxMaxRetries     int           `env:"DB_TX_MAX_RETRIES"    envDefault:"3"`
+
+	// Access tokens (TDR-011). Only `serve` needs them, so they are checked by ValidateServe:
+	// the migrate commands (e.g. the pre-deploy job) run without a JWT secret.
+	JWTSecret string        `env:"JWT_SECRET"`
+	JWTTTL    time.Duration `env:"JWT_TTL" envDefault:"15m"`
+}
+
+// minJWTSecretBytes is the shortest accepted HS256 secret (TDR-011, T004).
+const minJWTSecretBytes = 32
+
+// ValidateServe checks the settings that only the HTTP API needs.
+func (cfg Wallet) ValidateServe() error {
+	var errs []error
+	if len(cfg.JWTSecret) < minJWTSecretBytes {
+		errs = append(errs, fmt.Errorf("config: JWT_SECRET must be at least %d bytes, got %d", minJWTSecretBytes, len(cfg.JWTSecret)))
+	}
+	if cfg.JWTTTL <= 0 {
+		errs = append(errs, fmt.Errorf("config: JWT_TTL must be positive, got %s", cfg.JWTTTL))
+	} else if cfg.JWTTTL%time.Second != 0 {
+		// The login response reports expires_in in whole seconds.
+		errs = append(errs, fmt.Errorf("config: JWT_TTL must be whole seconds, got %s", cfg.JWTTTL))
+	}
+	return errors.Join(errs...)
 }
 
 // Banksim is the configuration of the bank simulator (cmd/banksim).

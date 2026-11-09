@@ -31,7 +31,7 @@ func newTestApp(t *testing.T, url string) http.Handler {
 	db, migrator, err := connect(context.Background(), cfg, log, m)
 	require.NoError(t, err)
 	t.Cleanup(db.Close)
-	return newHandler(log, m, readinessChecks(log, db, migrator))
+	return newHandler(log, m, readinessChecks(log, db, migrator), nil)
 }
 
 func getReadyz(t *testing.T, h http.Handler) *httptest.ResponseRecorder {
@@ -101,7 +101,7 @@ func TestMigrateCommands_UpIdempotentAndStatus(t *testing.T) {
 
 	code, stdout, _ := runCLI(t, environ, "migrate", "status")
 	require.Equal(t, exitOK, code)
-	assert.Equal(t, "version=0 dirty=false latest=2\n", stdout)
+	assert.Equal(t, "version=0 dirty=false latest=3\n", stdout)
 
 	code, _, stderr := runCLI(t, environ, "migrate", "up")
 	require.Equal(t, exitOK, code, stderr)
@@ -110,7 +110,7 @@ func TestMigrateCommands_UpIdempotentAndStatus(t *testing.T) {
 
 	code, stdout, _ = runCLI(t, environ, "migrate", "status")
 	require.Equal(t, exitOK, code)
-	assert.Equal(t, "version=2 dirty=false latest=2\n", stdout)
+	assert.Equal(t, "version=3 dirty=false latest=3\n", stdout)
 }
 
 func TestMigrateUp_DirtyVersion_Exit1(t *testing.T) {
@@ -139,6 +139,7 @@ func TestServe_CancelledContext_ExitsZero(t *testing.T) {
 		done <- run(ctx, []string{"serve"}, map[string]string{
 			"DATABASE_URL": url,
 			"HTTP_ADDR":    "127.0.0.1:0",
+			"JWT_SECRET":   testJWTSecret,
 		}, io.Discard, io.Discard)
 	}()
 

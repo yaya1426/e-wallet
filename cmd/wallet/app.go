@@ -10,11 +10,15 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/yaya1426/e-wallet/internal/identity"
+	"github.com/yaya1426/e-wallet/internal/ledger"
+	"github.com/yaya1426/e-wallet/internal/platform/clock"
 	"github.com/yaya1426/e-wallet/internal/platform/config"
 	"github.com/yaya1426/e-wallet/internal/platform/database"
 	"github.com/yaya1426/e-wallet/internal/platform/httpserver"
 	"github.com/yaya1426/e-wallet/internal/platform/logger"
 	"github.com/yaya1426/e-wallet/internal/platform/metrics"
+	"github.com/yaya1426/e-wallet/internal/wallet"
 )
 
 const (
@@ -30,6 +34,10 @@ func serve(ctx context.Context, environ map[string]string, stdout, stderr io.Wri
 	if !ok {
 		return exitError
 	}
+	if err := cfg.ValidateServe(); err != nil {
+		_, _ = fmt.Fprintf(stderr, "wallet: %v\n", err)
+		return exitError
+	}
 	m := metrics.New()
 	db, migrator, err := connect(ctx, cfg, log, m)
 	if err != nil {
@@ -38,7 +46,12 @@ func serve(ctx context.Context, environ map[string]string, stdout, stderr io.Wri
 	}
 	defer db.Close()
 
-	srv := httpserver.New(cfg.HTTPAddr, newHandler(log, m, readinessChecks(log, db, migrator)), cfg.ShutdownTimeout, log)
+	api, err := newAPI(db, cfg, clock.System{}, log, 0)
+	if err != nil {
+		log.Error("startup failed", slog.Any("error", err))
+		return exitError
+	}
+	srv := httpserver.New(cfg.HTTPAddr, newHandler(log, m, readinessChecks(log, db, migrator), api.routes), cfg.ShutdownTimeout, log)
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return srv.Run(gctx) })
@@ -132,13 +145,47 @@ func connect(ctx context.Context, cfg config.Wallet, log *slog.Logger, observer 
 	return db, migrator, nil
 }
 
-// newHandler builds the routes of the wallet HTTP API.
-func newHandler(log *slog.Logger, m *metrics.Metrics, checks []httpserver.ReadinessCheck) http.Handler {
+// newHandler builds the routes of the wallet HTTP API: the ops endpoints plus whatever
+// mount adds (nil for none).
+func newHandler(log *slog.Logger, m *metrics.Metrics, checks []httpserver.ReadinessCheck, mount func(*http.ServeMux)) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /healthz", httpserver.Healthz())
 	mux.Handle("GET /readyz", httpserver.Readyz(readinessCheckTimeout, checks...))
 	mux.Handle("GET /metrics", m.Handler())
+	if mount != nil {
+		mount(mux)
+	}
 	return httpserver.NewHandler(mux, log, m)
+}
+
+// api is the composition root of the business modules (architecture §3): it builds the
+// services in dependency order (ledger → wallet → identity) and their HTTP handlers.
+type api struct {
+	identity *identity.Handler
+	wallet   *wallet.Handler
+}
+
+// newAPI wires the modules. bcryptCost 0 means identity.DefaultBcryptCost (tests pass a
+// lower cost to stay fast).
+func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logger, bcryptCost int) (*api, error) {
+	ledgerSvc := ledger.NewService(db, clk)
+	walletSvc := wallet.NewService(db, ledgerSvc, clk)
+	identitySvc, err := identity.NewService(db, walletSvc, clk, identity.Config{
+		JWTSecret: cfg.JWTSecret, JWTTTL: cfg.JWTTTL, BcryptCost: bcryptCost,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &api{
+		identity: identity.NewHandler(identitySvc, identity.NewLoginLimiter(clk), log),
+		wallet:   wallet.NewHandler(walletSvc, log),
+	}, nil
+}
+
+// routes mounts every business endpoint.
+func (a *api) routes(mux *http.ServeMux) {
+	a.identity.Routes(mux)
+	a.wallet.Routes(mux, a.identity.RequireAuth)
 }
 
 // readinessChecks reports the database connection and whether migrations are applied

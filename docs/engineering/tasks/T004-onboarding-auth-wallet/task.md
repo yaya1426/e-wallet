@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T004 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T004-onboarding-auth-wallet` |
 | Depends on   | T003 |
@@ -39,7 +39,7 @@ Deliverables:
 |---------------|--------|
 | `migrations/000003_identity_wallet.up/down.sql` | `users`, `wallets` |
 | `internal/identity/model.go` | `User`, `Status` (`ACTIVE`/`DISABLED`), validation of phone/password/name, errors |
-| `internal/identity/service.go` | `Register`, `Login`, `GetUser`, `GetUserByPhone`, `VerifyToken` |
+| `internal/identity/service.go` | `Register`, `Login`, `GetUser`, `GetUserByPhone`, `Authenticate` (named `VerifyToken` when planned; it verifies the token and the user's status — review T004 #7) |
 | `internal/identity/token.go` | JWT issue/verify (HS256 only; any other `alg` is rejected) |
 | `internal/identity/ratelimit.go` | In-memory fixed-window limiter (per phone, per IP), injected clock, mutex, old windows dropped |
 | `internal/identity/http.go` | `POST /v1/auth/register`, `POST /v1/auth/login`, `RequireAuth` middleware |
@@ -117,17 +117,17 @@ Refresh tokens, logout/revocation, OTP, password reset, operator auth (`/interna
 `X-Forwarded-For`, freezing a wallet through the API (operators use SQL in phase 1, PRD-001 BR-8).
 
 ## Acceptance Criteria
-- [ ] AC-1 — Given a valid register body, then `201` with the fields above. In the DB: one user (bcrypt hash, not the password), one `ACTIVE` EGP wallet, one `USER_WALLET:<wallet_id>` ledger account with balance 0, all committed together.
-- [ ] AC-2 — Given a failure after the user insert (forced in a test, e.g. ledger insert fails), then nothing is committed.
-- [ ] AC-3 — Given each invalid input in the register table, then the listed status + code with the TDR-013 error body. A registered phone → `409 PHONE_ALREADY_REGISTERED`. Two parallel registrations with the same phone → exactly one `201`.
-- [ ] AC-4 — Given correct credentials, then `200` with a JWT whose `sub` = user ID and `exp − iat` = `JWT_TTL`. Wrong password and unknown phone both → `401 INVALID_CREDENTIALS`. A disabled user with the correct password → `403 USER_DISABLED`.
-- [ ] AC-5 — Given 11 login attempts for one phone within a minute, then the 11th → `429 TOO_MANY_REQUESTS`. After the window passes (fake clock), attempts are allowed again. The per-IP limit of 30 works the same way.
-- [ ] AC-6 — Given no token, a garbage token, a token signed with another secret, an `alg: none` token, or an expired token (fake clock), then `GET /v1/me/wallet` → `401 UNAUTHENTICATED`.
-- [ ] AC-7 — Given a valid token, then `GET /v1/me/wallet` returns that user's wallet with `available_balance_minor` = the ledger balance (0 at first, and the posted amount after a test posting).
-- [ ] AC-8 — Unknown JSON fields, a JSON array body, trailing data, or a string for `phone`'s type mismatch → `400 MALFORMED_REQUEST`. A 65 KB body → `413 REQUEST_TOO_LARGE`.
-- [ ] AC-9 — `JWT_SECRET` missing or shorter than 32 bytes, or `JWT_TTL` ≤ 0 → `wallet serve` exits 1 with an error naming the variable.
-- [ ] AC-10 — `api/openapi/wallet.yaml` is valid OpenAPI 3.1 (checked in CI with a linter, e.g. `redocly lint`, pinned version via `npx`, or a Go validator; implementer picks one and records it) and describes these 3 endpoints + the error schema.
-- [ ] AC-11 — Ledger integrity (`ledgertest.AssertIntegrity`) holds after the integration tests.
+- [x] AC-1 — Given a valid register body, then `201` with the fields above. In the DB: one user (bcrypt hash, not the password), one `ACTIVE` EGP wallet, one `USER_WALLET:<wallet_id>` ledger account with balance 0, all committed together.
+- [x] AC-2 — Given a failure after the user insert (forced in a test, e.g. ledger insert fails), then nothing is committed.
+- [x] AC-3 — Given each invalid input in the register table, then the listed status + code with the TDR-013 error body. A registered phone → `409 PHONE_ALREADY_REGISTERED`. Two parallel registrations with the same phone → exactly one `201`.
+- [x] AC-4 — Given correct credentials, then `200` with a JWT whose `sub` = user ID and `exp − iat` = `JWT_TTL`. Wrong password and unknown phone both → `401 INVALID_CREDENTIALS`. A disabled user with the correct password → `403 USER_DISABLED`.
+- [x] AC-5 — Given 11 login attempts for one phone within a minute, then the 11th → `429 TOO_MANY_REQUESTS`. After the window passes (fake clock), attempts are allowed again. The per-IP limit of 30 works the same way.
+- [x] AC-6 — Given no token, a garbage token, a token signed with another secret, an `alg: none` token, or an expired token (fake clock), then `GET /v1/me/wallet` → `401 UNAUTHENTICATED`.
+- [x] AC-7 — Given a valid token, then `GET /v1/me/wallet` returns that user's wallet with `available_balance_minor` = the ledger balance (0 at first, and the posted amount after a test posting).
+- [x] AC-8 — Unknown JSON fields, a JSON array body, trailing data, or a string for `phone`'s type mismatch → `400 MALFORMED_REQUEST`. A 65 KB body → `413 REQUEST_TOO_LARGE`.
+- [x] AC-9 — `JWT_SECRET` missing or shorter than 32 bytes, or `JWT_TTL` ≤ 0 → `wallet serve` exits 1 with an error naming the variable.
+- [x] AC-10 — `api/openapi/wallet.yaml` is valid OpenAPI 3.1 (checked in CI with a linter, e.g. `redocly lint`, pinned version via `npx`, or a Go validator; implementer picks one and records it) and describes these 3 endpoints + the error schema.
+- [x] AC-11 — Ledger integrity (`ledgertest.AssertIntegrity`) holds after the integration tests.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -159,3 +159,9 @@ Refresh tokens, logout/revocation, OTP, password reset, operator auth (`/interna
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-05 | Ready | Planned with the phase-1 roadmap; all questions answered |
+| 2026-11-06 | In Progress | implement-task started on `task/T004-onboarding-auth-wallet`, stacked on the unmerged T003 branch (PR #5, auto-merge) per the user's loop decision |
+| 2026-11-06 | In Review | Implemented and verified: make ci ok (lint 0), 228 tests pass, compose + curl + e2e pass. See implementation.md |
+| 2026-11-06 | Changes Requested | Review round 1: 1 Blocker (login limiter), 5 Minor, 2 Nit |
+| 2026-11-06 | Approved | Review round 2: all fixed except #6 (register rate limit → user decision); make ci ok, 237 tests |
+| 2026-11-06 | Approved | PR opened without auto-merge: production needs a JWT_SECRET on DigitalOcean first (writing it was blocked for the agent; the user sets it), then the PR can merge |
+| 2026-11-09 | Done | JWT_SECRET added on DigitalOcean by the user (recommended: mark it Encrypted, scope Run time); auto-merge enabled on PR #6 |

@@ -1,0 +1,173 @@
+package identity
+
+import (
+	"errors"
+	"log/slog"
+	"net"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/yaya1426/e-wallet/internal/platform/database"
+	"github.com/yaya1426/e-wallet/internal/platform/httpserver"
+)
+
+// Error codes of the identity endpoints (T004, catalogued in api/openapi/wallet.yaml).
+const (
+	CodeInvalidPhone           = "INVALID_PHONE"
+	CodeInvalidPassword        = "INVALID_PASSWORD"
+	CodeInvalidName            = "INVALID_NAME"
+	CodePhoneAlreadyRegistered = "PHONE_ALREADY_REGISTERED"
+	CodeInvalidCredentials     = "INVALID_CREDENTIALS" //nolint:gosec // G101 false positive: an error code, not a credential
+	CodeUserDisabled           = "USER_DISABLED"
+	CodeTooManyRequests        = "TOO_MANY_REQUESTS"
+	CodeUnauthenticated        = "UNAUTHENTICATED"
+)
+
+// Handler serves the auth endpoints and provides the auth middleware.
+type Handler struct {
+	svc     *Service
+	limiter *LoginLimiter
+	log     *slog.Logger
+}
+
+// NewHandler returns the identity HTTP handler.
+func NewHandler(svc *Service, limiter *LoginLimiter, log *slog.Logger) *Handler {
+	return &Handler{svc: svc, limiter: limiter, log: log}
+}
+
+// Routes mounts the auth endpoints on mux.
+func (h *Handler) Routes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /v1/auth/register", h.register)
+	mux.HandleFunc("POST /v1/auth/login", h.login)
+}
+
+type registerRequest struct {
+	Phone    string `json:"phone"`
+	FullName string `json:"full_name"`
+	Password string `json:"password"`
+}
+
+type registerResponse struct {
+	UserID    uuid.UUID `json:"user_id"`
+	Phone     string    `json:"phone"`
+	FullName  string    `json:"full_name"`
+	WalletID  uuid.UUID `json:"wallet_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
+	var req registerRequest
+	if err := httpserver.DecodeJSON(w, r, &req); err != nil {
+		httpserver.WriteDecodeError(w, err)
+		return
+	}
+	reg, err := h.svc.Register(r.Context(), RegisterInput(req))
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	httpserver.WriteJSON(w, http.StatusCreated, registerResponse{
+		UserID:    reg.User.ID,
+		Phone:     reg.User.Phone,
+		FullName:  reg.User.FullName,
+		WalletID:  reg.WalletID,
+		CreatedAt: reg.User.CreatedAt.UTC(),
+	})
+}
+
+type loginRequest struct {
+	Phone    string `json:"phone"`
+	Password string `json:"password"`
+}
+
+type loginResponse struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	ExpiresIn   int64  `json:"expires_in"` // seconds
+}
+
+func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
+	var req loginRequest
+	if err := httpserver.DecodeJSON(w, r, &req); err != nil {
+		httpserver.WriteDecodeError(w, err)
+		return
+	}
+	if !h.limiter.Allow(req.Phone, clientIP(r)) {
+		httpserver.WriteError(w, http.StatusTooManyRequests, CodeTooManyRequests, "Too many login attempts. Try again in a minute.")
+		return
+	}
+	token, err := h.svc.Login(r.Context(), req.Phone, req.Password)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	httpserver.WriteJSON(w, http.StatusOK, loginResponse{
+		AccessToken: token.Token,
+		TokenType:   "Bearer",
+		ExpiresIn:   int64(token.ExpiresIn / time.Second),
+	})
+}
+
+// RequireAuth accepts only requests with a valid "Authorization: Bearer <jwt>" of an active
+// user and puts the user ID in the request context (httpserver.UserID).
+func (h *Handler) RequireAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token, ok := bearerToken(r)
+		if !ok {
+			httpserver.WriteError(w, http.StatusUnauthorized, CodeUnauthenticated, "Missing or invalid access token.")
+			return
+		}
+		userID, err := h.svc.Authenticate(r.Context(), token)
+		if err != nil {
+			h.writeError(w, r, err)
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(httpserver.WithUserID(r.Context(), userID)))
+	})
+}
+
+// writeError maps service errors to the API contract (T004).
+func (h *Handler) writeError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, ErrInvalidPhone):
+		httpserver.WriteError(w, http.StatusBadRequest, CodeInvalidPhone, "Phone must be an Egyptian mobile number in E.164, e.g. +201001234567.")
+	case errors.Is(err, ErrInvalidPassword):
+		httpserver.WriteError(w, http.StatusBadRequest, CodeInvalidPassword, "Password must be 8 to 72 bytes long.")
+	case errors.Is(err, ErrInvalidName):
+		httpserver.WriteError(w, http.StatusBadRequest, CodeInvalidName, "Full name must be 2 to 100 characters long.")
+	case errors.Is(err, ErrPhoneTaken):
+		httpserver.WriteError(w, http.StatusConflict, CodePhoneAlreadyRegistered, "This phone number is already registered.")
+	case errors.Is(err, ErrInvalidCredentials):
+		httpserver.WriteError(w, http.StatusUnauthorized, CodeInvalidCredentials, "Phone or password is incorrect.")
+	case errors.Is(err, ErrUserDisabled):
+		httpserver.WriteError(w, http.StatusForbidden, CodeUserDisabled, "This user is disabled.")
+	case errors.Is(err, ErrUnauthenticated):
+		httpserver.WriteError(w, http.StatusUnauthorized, CodeUnauthenticated, "Missing or invalid access token.")
+	case errors.Is(err, database.ErrTryAgain):
+		httpserver.WriteError(w, http.StatusServiceUnavailable, httpserver.CodeTryAgain, "The request conflicted with another one. Please try again.")
+	default:
+		h.log.ErrorContext(r.Context(), "identity: request failed", slog.Any("error", err))
+		httpserver.WriteError(w, http.StatusInternalServerError, httpserver.CodeInternal, "Internal server error.")
+	}
+}
+
+// bearerToken returns the token of an "Authorization: Bearer <token>" header.
+func bearerToken(r *http.Request) (string, bool) {
+	scheme, token, ok := strings.Cut(r.Header.Get("Authorization"), " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") || token == "" {
+		return "", false
+	}
+	return token, true
+}
+
+// clientIP is the host part of r.RemoteAddr. X-Forwarded-For is ignored in phase 1 (T004).
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
