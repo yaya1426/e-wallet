@@ -1,6 +1,7 @@
 package payment
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -35,6 +36,7 @@ func NewHandler(svc *Service, log *slog.Logger) *Handler {
 // Routes mounts the endpoints; requireAuth is the identity middleware.
 func (h *Handler) Routes(mux *http.ServeMux, requireAuth func(http.Handler) http.Handler) {
 	mux.Handle("POST /v1/topups", requireAuth(http.HandlerFunc(h.topUp)))
+	mux.Handle("POST /v1/withdrawals", requireAuth(http.HandlerFunc(h.withdraw)))
 }
 
 type amountRequest struct {
@@ -52,9 +54,21 @@ type acceptedBody struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 
-// topUp handles POST /v1/topups. Checks 1–5 (token, body, key, amount, currency) are answered
-// here and not stored for the key; checks 6–9 run in RequestTopUp.
+// topUp handles POST /v1/topups (PRD-002 §6).
 func (h *Handler) topUp(w http.ResponseWriter, r *http.Request) {
+	h.handleRequest(w, r, h.svc.RequestTopUp)
+}
+
+// withdraw handles POST /v1/withdrawals (PRD-003 §6).
+func (h *Handler) withdraw(w http.ResponseWriter, r *http.Request) {
+	h.handleRequest(w, r, h.svc.RequestWithdrawal)
+}
+
+// handleRequest serves a top-up or withdrawal request. Checks 1–5 (token, body, key, amount,
+// currency) are answered here and not stored for the key; the business checks run in run.
+func (h *Handler) handleRequest(w http.ResponseWriter, r *http.Request,
+	run func(context.Context, RequestInput, Renderer) (Response, error),
+) {
 	userID, ok := httpserver.UserID(r.Context())
 	if !ok {
 		h.internalError(w, r, errors.New("request without authenticated user"))
@@ -79,12 +93,9 @@ func (h *Handler) topUp(w http.ResponseWriter, r *http.Request) {
 		h.internalError(w, r, err)
 		return
 	}
-	in := TopUpInput{UserID: userID, Amount: amount,
+	in := RequestInput{UserID: userID, Amount: amount,
 		Idempotency: idempotency.Request{UserID: userID, Key: key, Method: r.Method, Path: r.URL.Path, Hash: hash}}
-
-	resp, err := h.svc.RequestTopUp(r.Context(), in, func(txn transaction.Transaction, err error) (int, any) {
-		return render(w, txn, err)
-	})
+	resp, err := run(r.Context(), in, func(txn transaction.Transaction, err error) (int, any) { return render(w, txn, err) })
 	h.write(w, r, resp, err)
 }
 
@@ -116,8 +127,9 @@ func (h *Handler) write(w http.ResponseWriter, r *http.Request, resp Response, e
 	httpserver.WriteJSON(w, resp.Status, resp.Body)
 }
 
-// businessError is how one business error is answered; the same table decides how errors
-// are rendered and stored for the key.
+// businessError is how one business error is answered. The same table decides which errors
+// are stored for the idempotency key (isBusinessError) and how they are rendered, so the two
+// cannot drift apart.
 type businessError struct {
 	err     error
 	status  int
@@ -130,6 +142,24 @@ var businessErrors = []businessError{
 	{ErrBankAccountRequired, http.StatusUnprocessableEntity, CodeBankAccountRequired, "Link a bank account first."},
 	{wallet.ErrAmountOutOfRange, http.StatusUnprocessableEntity, wallet.CodeAmountOutOfRange, "The amount is outside the allowed range."},
 	{wallet.ErrWalletLimitExceeded, http.StatusUnprocessableEntity, wallet.CodeWalletLimitExceeded, "This would take your wallet above its maximum balance."},
+	{wallet.ErrInsufficientFunds, http.StatusUnprocessableEntity, wallet.CodeInsufficientFunds, "Available balance is too low."},
+	{wallet.ErrDailyLimitExceeded, http.StatusUnprocessableEntity, wallet.CodeDailyLimitExceeded, "This would exceed your daily outgoing limit."},
+}
+
+func lookupBusinessError(err error) (businessError, bool) {
+	for _, be := range businessErrors {
+		if errors.Is(err, be.err) {
+			return be, true
+		}
+	}
+	return businessError{}, false
+}
+
+// isBusinessError reports whether err is a business check failure, answered with a 4xx and
+// stored for the idempotency key.
+func isBusinessError(err error) bool {
+	_, ok := lookupBusinessError(err)
+	return ok
 }
 
 // render maps the outcome of a request to its response: 202 with the PENDING transaction,
@@ -141,10 +171,8 @@ func render(w http.ResponseWriter, txn transaction.Transaction, err error) (int,
 			AmountMinor: txn.Amount.Amount(), Currency: string(txn.Amount.Currency()), CreatedAt: txn.CreatedAt.UTC(),
 		}
 	}
-	for _, be := range businessErrors {
-		if errors.Is(err, be.err) {
-			return be.status, httpserver.ErrorBody(w, be.code, be.message)
-		}
+	if be, ok := lookupBusinessError(err); ok {
+		return be.status, httpserver.ErrorBody(w, be.code, be.message)
 	}
 	return http.StatusInternalServerError, httpserver.ErrorBody(w, httpserver.CodeInternal, "Internal server error.")
 }

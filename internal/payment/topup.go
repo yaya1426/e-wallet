@@ -2,147 +2,75 @@ package payment
 
 import (
 	"context"
-	"errors"
-	"fmt"
+	"encoding/json"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/yaya1426/e-wallet/internal/idempotency"
-	"github.com/yaya1426/e-wallet/internal/identity"
+	"github.com/yaya1426/e-wallet/internal/bank"
 	"github.com/yaya1426/e-wallet/internal/ledger"
-	"github.com/yaya1426/e-wallet/internal/outbox"
-	"github.com/yaya1426/e-wallet/internal/platform/money"
+	"github.com/yaya1426/e-wallet/internal/platform/queue"
 	"github.com/yaya1426/e-wallet/internal/transaction"
-	"github.com/yaya1426/e-wallet/internal/wallet"
 )
 
 // EventTopUpRequested asks the outbox to send the debit to the bank (TDR-006).
 const EventTopUpRequested = "topup.requested"
 
-// ErrBankAccountRequired means the user has no linked bank account (PRD-002 §3).
-var ErrBankAccountRequired = errors.New("payment: a linked bank account is required")
-
-// TopUpInput is a validated top-up request.
-type TopUpInput struct {
-	UserID      uuid.UUID
-	Amount      money.Money
-	Idempotency idempotency.Request
-}
-
-// requestedPayload is the payload of topup.requested (and withdrawal.requested).
-type requestedPayload struct {
-	TransactionID uuid.UUID `json:"transaction_id"`
-}
-
-// topUpBusinessErrors are the errors of checks 6–9: rendered, stored for the key, replayed.
-var topUpBusinessErrors = []error{wallet.ErrFrozen, ErrBankAccountRequired, wallet.ErrAmountOutOfRange, wallet.ErrWalletLimitExceeded}
-
-func isOneOf(err error, targets []error) bool {
-	for _, t := range targets {
-		if errors.Is(err, t) {
-			return true
-		}
-	}
-	return false
-}
-
-// RequestTopUp accepts a top-up in one unit of work (PRD-002 §4): idempotency Begin →
-// checks 6–9 → transaction (TOPUP, PENDING, with the bank account snapshot) → outbox event
-// topup.requested → idempotency Complete. No ledger entry is written: the wallet is credited
-// only when the bank confirms (TU-BR-1). A business error is rendered, stored with Complete
-// and committed, so the same key replays it; nothing else is written then. Other errors roll
-// everything back and are returned (idempotency errors, database.ErrTryAgain, failures).
-// After the commit the outbox is woken, so the bank call starts at once.
-func (s *Service) RequestTopUp(ctx context.Context, in TopUpInput, render Renderer) (Response, error) {
-	var resp Response
-	err := s.db.InTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		resp = Response{}
-		replay, err := s.idempotency.Begin(ctx, tx, in.Idempotency)
+// RequestTopUp accepts a top-up (PRD-002 §4): checks 6–9 → transaction (TOPUP, PENDING,
+// with the bank account snapshot) → outbox event topup.requested, in one unit of work with
+// the idempotency key (see request). No ledger entry is written: the wallet is credited only
+// when the bank confirms (TU-BR-1).
+func (s *Service) RequestTopUp(ctx context.Context, in RequestInput, render Renderer) (Response, error) {
+	return s.request(ctx, in, render, func(ctx context.Context, tx pgx.Tx) (transaction.Transaction, error) {
+		w, snapshot, err := s.checkedWallet(ctx, tx, in.UserID) // 6, 7
 		if err != nil {
-			return err
+			return transaction.Transaction{}, err
 		}
-		if replay != nil {
-			resp.Replay = replay
-			return nil
+		amount := in.Amount.Amount()
+		if err := s.limits.CheckTopUpAmount(amount); err != nil { // 8
+			return transaction.Transaction{}, err
 		}
-		txn, reqErr := s.requestTopUp(ctx, tx, in)
-		if reqErr != nil && !isOneOf(reqErr, topUpBusinessErrors) {
-			return reqErr
+		// The wallet account lock serializes this user's top-up checks: two parallel top-ups
+		// cannot both pass the maximum-balance check (decided 2026-11-05).
+		accounts, err := s.ledger.LockAccounts(ctx, tx, []ledger.AccountID{w.LedgerAccountID})
+		if err != nil {
+			return transaction.Transaction{}, err
 		}
-		status, body := render(txn, reqErr)
-		var txnID *uuid.UUID
-		if reqErr == nil {
-			txnID = &txn.ID
-			resp.TransactionID = txn.ID
+		pending, err := s.transactions.SumPendingTopUps(ctx, tx, w.ID)
+		if err != nil {
+			return transaction.Transaction{}, err
 		}
-		if err := s.idempotency.Complete(ctx, tx, in.UserID, in.Idempotency.Key, status, body, txnID); err != nil {
-			return err
+		if err := s.limits.CheckTopUpBalance(accounts[w.LedgerAccountID].Balance.Amount(), pending, amount); err != nil { // 9
+			return transaction.Transaction{}, err
 		}
-		resp.Status, resp.Body = status, body
-		return nil
+
+		txn, err := s.transactions.Create(ctx, tx, transaction.New{
+			Type: transaction.TypeTopUp, Status: transaction.StatusPending, InitiatorUserID: in.UserID,
+			DestinationWalletID: w.ID, Amount: in.Amount, IdempotencyKey: in.Idempotency.Key, BankAccount: snapshot,
+		})
+		if err != nil {
+			return transaction.Transaction{}, err
+		}
+		return txn, s.enqueueRequested(ctx, tx, EventTopUpRequested, txn.ID)
 	})
-	if err != nil {
-		return Response{}, err
-	}
-	if resp.TransactionID != uuid.Nil {
-		s.outbox.Wake() // after the commit, never inside it (TDR-006 §2)
-	}
-	return resp, nil
 }
 
-// requestTopUp does checks 6–9 and, if they pass, writes the transaction and the outbox
-// event. The checks come before any write, so a business error leaves tx usable for Complete.
-func (s *Service) requestTopUp(ctx context.Context, tx pgx.Tx, in TopUpInput) (transaction.Transaction, error) {
-	w, err := s.wallets.GetByUserID(ctx, tx, in.UserID)
-	if err != nil {
-		return transaction.Transaction{}, err
-	}
-	if w.Status == wallet.StatusFrozen { // 6
-		return transaction.Transaction{}, wallet.ErrFrozen
-	}
-	account, err := s.identity.GetBankAccount(ctx, tx, in.UserID) // 7
-	if errors.Is(err, identity.ErrBankAccountNotFound) {
-		return transaction.Transaction{}, ErrBankAccountRequired
-	}
-	if err != nil {
-		return transaction.Transaction{}, err
-	}
-	amount := in.Amount.Amount()
-	if err := s.limits.CheckTopUpAmount(amount); err != nil { // 8
-		return transaction.Transaction{}, err
-	}
-	// The wallet account lock serializes this user's top-up checks: two parallel top-ups
-	// cannot both pass the maximum-balance check (decided 2026-11-05).
-	accounts, err := s.ledger.LockAccounts(ctx, tx, []ledger.AccountID{w.LedgerAccountID})
-	if err != nil {
-		return transaction.Transaction{}, err
-	}
-	pending, err := s.transactions.SumPendingTopUps(ctx, tx, w.ID)
-	if err != nil {
-		return transaction.Transaction{}, err
-	}
-	if err := s.limits.CheckTopUpBalance(accounts[w.LedgerAccountID].Balance.Amount(), pending, amount); err != nil { // 9
-		return transaction.Transaction{}, err
-	}
-
-	txn, err := s.transactions.Create(ctx, tx, transaction.New{
-		Type:                transaction.TypeTopUp,
-		Status:              transaction.StatusPending,
-		InitiatorUserID:     in.UserID,
-		DestinationWalletID: w.ID,
-		Amount:              in.Amount,
-		IdempotencyKey:      in.Idempotency.Key,
-		BankAccount:         &transaction.BankAccountSnapshot{IBAN: account.IBAN, HolderName: account.HolderName},
+// deliverTopUpRequested asks the bank to pull the money (see deliverRequested). A rejection
+// fails the top-up at once with the bank's code and message (TU-BR-5).
+func (s *Service) deliverTopUpRequested(ctx context.Context, job queue.Job) queue.Result {
+	return s.deliverRequested(ctx, job, bankFlow{
+		txnType: transaction.TypeTopUp,
+		call: func(ctx context.Context, txn transaction.Transaction) (bank.Acceptance, error) {
+			return s.bank.CreateDebit(ctx, bank.DebitRequest{
+				IdempotencyKey: txn.ID, Amount: txn.Amount, IBAN: txn.BankAccount.IBAN, HolderName: txn.BankAccount.HolderName,
+			})
+		},
+		reject: func(ctx context.Context, tx pgx.Tx, txn transaction.Transaction, rejected *bank.RejectedError) error {
+			code, msg := rejected.Code, rejected.Message
+			_, err := s.transactions.Transition(ctx, tx, txn.ID, transaction.StatusPending, transaction.StatusFailed,
+				transaction.Patch{FailureCode: &code, FailureMessage: &msg})
+			return err
+		},
 	})
-	if err != nil {
-		return transaction.Transaction{}, err
-	}
-	if err := s.outbox.Enqueue(ctx, tx, outbox.Event{
-		AggregateType: "transaction", AggregateID: txn.ID, Type: EventTopUpRequested,
-		Payload: requestedPayload{TransactionID: txn.ID},
-	}); err != nil {
-		return transaction.Transaction{}, fmt.Errorf("payment: enqueue %s: %w", EventTopUpRequested, err)
-	}
-	return txn, nil
 }
+
+func decodePayload(raw []byte, v any) error { return json.Unmarshal(raw, v) }

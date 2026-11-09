@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T018 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T018-withdrawal-request` |
 | Depends on   | T017 |
@@ -79,15 +79,15 @@ After the commit: `outbox.Wake()`. The available balance is already lower (WD-1,
 Payout webhooks (T019), `dead_outbox`/stuck handling (phase 2).
 
 ## Acceptance Criteria
-- [ ] AC-1 — Balance 50 000, withdraw 20 000 → `202 PENDING`; balance 30 000; in-transit +20 000; one `WITHDRAWAL_RESERVE` entry; one `withdrawal.requested` event (PRD-003 AC-1).
-- [ ] AC-2 — Each error row → its status/code; nothing written.
-- [ ] AC-3 — 10 parallel withdrawals of 10 000 on a 50 000 balance (different keys) → exactly 5 `202`, 5 `INSUFFICIENT_FUNDS`, final balance 0, never negative (PRD-003 AC-2).
-- [ ] AC-4 — Daily limit: with 5 000 000 already sent today (P2P + withdrawals), a withdrawal of 1 100 000 → `DAILY_LIMIT_EXCEEDED`; a FAILED withdrawal from today does not count.
-- [ ] AC-5 — Same key twice → one withdrawal, one reserve; the second gets the replay (WD-4).
-- [ ] AC-6 — Handler + fake gateway: accept → `PROCESSING`; sync rejection → `FAILED` + one `WITHDRAWAL_REFUND`, balance restored, in-transit back to 0 for it; temporary ×3 then accept → paid once with the same key, no refund (PRD-003 AC-6).
-- [ ] AC-7 — Handler after the webhook already moved the transaction → `Done`, nothing changed.
-- [ ] AC-8 — `WITHDRAWALS_IN_TRANSIT` balance = Σ amounts of withdrawals in PENDING/PROCESSING after every test (data-model invariant 5, asserted by a test helper in `payment`).
-- [ ] AC-9 — Ledger integrity holds after every scenario.
+- [x] AC-1 — Balance 50 000, withdraw 20 000 → `202 PENDING`; balance 30 000; in-transit +20 000; one `WITHDRAWAL_RESERVE` entry; one `withdrawal.requested` event (PRD-003 AC-1).
+- [x] AC-2 — Each error row → its status/code; nothing written.
+- [x] AC-3 — 10 parallel withdrawals of 10 000 on a 50 000 balance (different keys) → exactly 5 `202`, 5 `INSUFFICIENT_FUNDS`, final balance 0, never negative (PRD-003 AC-2).
+- [x] AC-4 — Daily limit: with 5 000 000 already sent today (P2P + withdrawals), a withdrawal of 1 100 000 → `DAILY_LIMIT_EXCEEDED`; a FAILED withdrawal from today does not count.
+- [x] AC-5 — Same key twice → one withdrawal, one reserve; the second gets the replay (WD-4).
+- [x] AC-6 — Handler + fake gateway: accept → `PROCESSING`; sync rejection → `FAILED` + one `WITHDRAWAL_REFUND`, balance restored, in-transit back to 0 for it; temporary ×3 then accept → paid once with the same key, no refund (PRD-003 AC-6).
+- [x] AC-7 — Handler after the webhook already moved the transaction → `Done`, nothing changed.
+- [x] AC-8 — `WITHDRAWALS_IN_TRANSIT` balance = Σ amounts of withdrawals in PENDING/PROCESSING after every test (data-model invariant 5, asserted by a test helper in `payment`).
+- [x] AC-9 — Ledger integrity holds after every scenario.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -112,3 +112,7 @@ Payout webhooks (T019), `dead_outbox`/stuck handling (phase 2).
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-05 | Ready | Planned with the phase-1 roadmap; all questions answered |
+| 2026-11-09 | In Progress | Implementation started (on top of T017, PR #19) |
+| 2026-11-09 | In Review | Implemented; verification passed (implementation.md) |
+| 2026-11-09 | Approved | Review round 1: 0 Blocker, 0 Major, 0 Minor, 2 Nits (review.md) |
+| 2026-11-09 | Done | Finalized — PR opened |

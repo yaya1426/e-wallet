@@ -23,6 +23,7 @@ import (
 	"github.com/yaya1426/e-wallet/internal/ledger"
 	"github.com/yaya1426/e-wallet/internal/ledger/ledgertest"
 	"github.com/yaya1426/e-wallet/internal/payment"
+	"github.com/yaya1426/e-wallet/internal/payment/paymenttest"
 	"github.com/yaya1426/e-wallet/internal/platform/clock/clocktest"
 	"github.com/yaya1426/e-wallet/internal/platform/database"
 	"github.com/yaya1426/e-wallet/internal/platform/database/databasetest"
@@ -56,7 +57,8 @@ func setup(t *testing.T) fixture {
 	migrator, err := database.NewMigrator(db.Pool(), url)
 	require.NoError(t, err)
 	require.NoError(t, migrator.Up(ctx))
-	t.Cleanup(func() { ledgertest.AssertIntegrity(t, db) }) // AC-11
+	t.Cleanup(func() { ledgertest.AssertIntegrity(t, db) })  // AC-11
+	t.Cleanup(func() { paymenttest.AssertInTransit(t, db) }) // T018 AC-8
 
 	clk := clocktest.New(time.Date(2026, 11, 9, 10, 0, 0, 0, time.UTC))
 	f := fixture{db: db, clock: clk, ledger: ledger.NewService(db, clk), txns: transaction.NewService(clk)}
@@ -111,19 +113,51 @@ func (f fixture) topUp(t *testing.T, minor int64, bankRef string) transaction.Tr
 	return txn
 }
 
-func (f fixture) withdrawal(t *testing.T, bankRef string) transaction.Transaction {
+// fund credits the wallet with minor piasters through a completed top-up.
+func (f fixture) fund(t *testing.T, minor int64) {
 	t.Helper()
+	ref := "FUND-" + uuid.NewString()
+	txn := f.topUp(t, minor, ref)
+	require.NoError(t, f.apply(t, txn.ID, succeeded(t, minor, ref)))
+}
+
+// pendingWithdrawal creates a funded, reserved PENDING withdrawal of minor piasters, as
+// RequestWithdrawal does: the transaction with its bank account snapshot and the
+// WITHDRAWAL_RESERVE entry (Dr user wallet / Cr WITHDRAWALS_IN_TRANSIT).
+func (f fixture) pendingWithdrawal(t *testing.T, minor int64) transaction.Transaction {
+	t.Helper()
+	f.fund(t, minor)
 	var txn transaction.Transaction
 	require.NoError(t, f.db.InTx(context.Background(), func(ctx context.Context, tx pgx.Tx) error {
 		var err error
 		txn, err = f.txns.Create(ctx, tx, transaction.New{
 			Type: transaction.TypeWithdrawal, Status: transaction.StatusPending, InitiatorUserID: f.user,
-			SourceWalletID: f.wallet.ID, Amount: egp(t, amount), IdempotencyKey: uuid.NewString(),
+			SourceWalletID: f.wallet.ID, Amount: egp(t, minor), IdempotencyKey: uuid.NewString(),
 			BankAccount: &transaction.BankAccountSnapshot{IBAN: "EG380019000500000000263180002", HolderName: "Test User"},
 		})
 		if err != nil {
 			return err
 		}
+		inTransit, err := f.ledger.GetAccountByCode(ctx, tx, ledger.CodeWithdrawalsInTransit)
+		if err != nil {
+			return err
+		}
+		_, err = f.ledger.Post(ctx, tx, ledger.Entry{TransactionID: txn.ID, Type: ledger.EntryWithdrawalReserve,
+			Postings: []ledger.Posting{
+				{AccountID: f.wallet.LedgerAccountID, Direction: ledger.Debit, Amount: egp(t, minor)},
+				{AccountID: inTransit.ID, Direction: ledger.Credit, Amount: egp(t, minor)},
+			}})
+		return err
+	}))
+	return txn
+}
+
+// withdrawal is a reserved withdrawal the bank accepted (PROCESSING with bankRef).
+func (f fixture) withdrawal(t *testing.T, bankRef string) transaction.Transaction {
+	t.Helper()
+	txn := f.pendingWithdrawal(t, amount)
+	require.NoError(t, f.db.InTx(context.Background(), func(ctx context.Context, tx pgx.Tx) error {
+		var err error
 		txn, err = f.txns.Transition(ctx, tx, txn.ID, transaction.StatusPending, transaction.StatusProcessing,
 			transaction.Patch{BankReference: &bankRef})
 		return err
@@ -374,7 +408,8 @@ func TestApplyBankOutcome_Errors(t *testing.T) {
 
 	assert.ErrorIs(t, f.apply(t, uuid.New(), succeeded(t, amount, "BSIM-X")), transaction.ErrNotFound)
 	assert.Empty(t, f.discrepancyList(t))
-	f.assertNoMoney(t, txn.ID)
+	assert.Empty(t, f.entries(t, txn.ID))
+	assert.Equal(t, transaction.StatusProcessing, f.get(t, txn.ID).Status)
 }
 
 func event(t *testing.T, txn transaction.Transaction, eventType, ref string, minor int64) webhook.BankEvent {
