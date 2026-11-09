@@ -96,3 +96,26 @@ var (
 	// ErrNotFound means the bank has no operation with the idempotency key.
 	ErrNotFound = errors.New("bank: operation not found")
 )
+
+// Outcome is the bank's final result for an operation, however we learned it: a webhook
+// (TDR-007) or a status query during reconciliation (TDR-009). payment.ApplyBankOutcome
+// applies it.
+type Outcome struct {
+	Kind           Kind
+	Status         OperationStatus // StatusSucceeded or StatusFailed
+	BankReference  string
+	Amount         money.Money
+	FailureCode    string // set when Status is StatusFailed
+	FailureMessage string
+}
+
+// Final reports whether the outcome is a final result (succeeded or failed).
+func (o Outcome) Final() bool { return o.Status == StatusSucceeded || o.Status == StatusFailed }
+
+// Outcome returns the operation as an Outcome. It is final only once the operation settled.
+func (op Operation) Outcome() Outcome {
+	return Outcome{
+		Kind: op.Kind, Status: op.Status, BankReference: op.BankReference, Amount: op.Amount,
+		FailureCode: op.FailureCode, FailureMessage: op.FailureMessage,
+	}
+}

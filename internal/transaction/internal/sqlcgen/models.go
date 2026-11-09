@@ -98,6 +98,18 @@ type Posting struct {
 	CreatedAt      time.Time
 }
 
+type ReconciliationDiscrepancy struct {
+	ID             uuid.UUID
+	Kind           string
+	Severity       string
+	TransactionID  uuid.NullUUID
+	Details        []byte
+	Status         string
+	CreatedAt      time.Time
+	ResolvedAt     *time.Time
+	ResolutionNote *string
+}
+
 type Transaction struct {
 	ID                  uuid.UUID
 	Type                string

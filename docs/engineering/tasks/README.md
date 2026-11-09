@@ -46,7 +46,7 @@ Every unit of work is a task folder `TNNN-<slug>/` (e.g. `T001-project-bootstrap
 | [T013](T013-bank-gateway-port/task.md) | Bank gateway port + banksim adapter | Done |
 | [T014](T014-bank-simulator-core/task.md) | Bank simulator core | Done |
 | [T015](T015-webhook-inbox/task.md) | Webhook ingestion (inbox) | Done |
-| [T016](T016-discrepancy-apply-bank-outcome/task.md) | Discrepancy module + ApplyBankOutcome (debits) | Ready |
+| [T016](T016-discrepancy-apply-bank-outcome/task.md) | Discrepancy module + ApplyBankOutcome (debits) | Done |
 | [T017](T017-top-up-request/task.md) | Top-up request | Ready |
 | [T018](T018-withdrawal-request/task.md) | Withdrawal request | Ready |
 | [T019](T019-withdrawal-outcome/task.md) | Withdrawal outcome | Ready |

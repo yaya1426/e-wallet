@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T016 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T016-discrepancy-apply-bank-outcome` |
 | Depends on   | T006, T013 (types), T015 |
@@ -94,17 +94,17 @@ None (the operator API is phase 2).
 Payout outcomes (T019), reconciliation callers (phase 2), the operator API (phase 2), auto-fix.
 
 ## Acceptance Criteria
-- [ ] AC-1 — Given a `PROCESSING` top-up of 50 000, when a `debit.succeeded` with the same amount is processed, then `COMPLETED` with `completed_at`, wallet +50 000, `BANK_SETTLEMENT` +50 000, one `TOPUP_SETTLE` entry (PRD-002 AC-2).
-- [ ] AC-2 — `debit.failed` (`INSUFFICIENT_FUNDS`) → `FAILED` with that code and message, no journal entry, balance unchanged (AC-3).
-- [ ] AC-3 — The same event 5 times (different `event_id`s, so the inbox does not dedupe) → applied once; later ones are no-ops (AC-4).
-- [ ] AC-4 — `debit.failed` after `COMPLETED` (or `succeeded` after `FAILED`) → one `STATUS_MISMATCH` CRITICAL row, no money/status change; repeating it does not add a second open row.
-- [ ] AC-5 — Amount 49 999 instead of 50 000 → `AMOUNT_MISMATCH`, no posting, still `PROCESSING`.
-- [ ] AC-6 — A `PENDING` top-up (no reference yet) receiving `debit.succeeded` matched by idempotency key → `PROCESSING` with the event's reference, then `COMPLETED`.
-- [ ] AC-7 — Frozen wallet, or a balance that would exceed the max → still credited.
-- [ ] AC-8 — An event for an unknown transaction → retried; at `DEAD` one `UNKNOWN_BANK_EVENT` (WARNING, no transaction_id, details = event id/type/reference) is recorded.
-- [ ] AC-9 — A debit event for a `WITHDRAWAL` transaction → `STATUS_MISMATCH`, no change.
-- [ ] AC-10 — `discrepancy.List` returns rows filtered by status, newest first.
-- [ ] AC-11 — Ledger integrity holds after every scenario.
+- [x] AC-1 — Given a `PROCESSING` top-up of 50 000, when a `debit.succeeded` with the same amount is processed, then `COMPLETED` with `completed_at`, wallet +50 000, `BANK_SETTLEMENT` +50 000, one `TOPUP_SETTLE` entry (PRD-002 AC-2).
+- [x] AC-2 — `debit.failed` (`INSUFFICIENT_FUNDS`) → `FAILED` with that code and message, no journal entry, balance unchanged (AC-3).
+- [x] AC-3 — The same event 5 times (different `event_id`s, so the inbox does not dedupe) → applied once; later ones are no-ops (AC-4).
+- [x] AC-4 — `debit.failed` after `COMPLETED` (or `succeeded` after `FAILED`) → one `STATUS_MISMATCH` CRITICAL row, no money/status change; repeating it does not add a second open row.
+- [x] AC-5 — Amount 49 999 instead of 50 000 → `AMOUNT_MISMATCH`, no posting, still `PROCESSING`.
+- [x] AC-6 — A `PENDING` top-up (no reference yet) receiving `debit.succeeded` matched by idempotency key → `PROCESSING` with the event's reference, then `COMPLETED`.
+- [x] AC-7 — Frozen wallet, or a balance that would exceed the max → still credited.
+- [x] AC-8 — An event for an unknown transaction → retried; at `DEAD` one `UNKNOWN_BANK_EVENT` (WARNING, no transaction_id, details = event id/type/reference) is recorded.
+- [x] AC-9 — A debit event for a `WITHDRAWAL` transaction → `STATUS_MISMATCH`, no change.
+- [x] AC-10 — `discrepancy.List` returns rows filtered by status, newest first.
+- [x] AC-11 — Ledger integrity holds after every scenario.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -131,3 +131,7 @@ Payout outcomes (T019), reconciliation callers (phase 2), the operator API (phas
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-05 | Ready | Planned with the phase-1 roadmap; all questions answered |
+| 2026-11-09 | In Progress | Implementation started (on top of T015, PR #17) |
+| 2026-11-09 | In Review | Implemented; verification passed (implementation.md) |
+| 2026-11-09 | Approved | Review round 1: 0 Blocker, 0 Major, 1 Minor, 2 Nits (review.md) |
+| 2026-11-09 | Done | Finalized — PR opened |

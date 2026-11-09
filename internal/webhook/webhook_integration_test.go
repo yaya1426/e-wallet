@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/yaya1426/e-wallet/internal/banksim"
+	"github.com/yaya1426/e-wallet/internal/discrepancy"
 	"github.com/yaya1426/e-wallet/internal/platform/clock/clocktest"
 	"github.com/yaya1426/e-wallet/internal/platform/database"
 	"github.com/yaya1426/e-wallet/internal/platform/database/databasetest"
@@ -84,7 +85,7 @@ func setup(t *testing.T, h webhook.EventHandler) fixture {
 	require.NoError(t, err)
 
 	clk := clocktest.New(time.Date(2026, 11, 9, 10, 0, 0, 0, time.UTC))
-	svc, err := webhook.NewService(db.Pool(), db, clk, webhook.Config{Workers: 2, MaxAttempts: 3, PollInterval: tick}, nil, nil)
+	svc, err := webhook.NewService(db.Pool(), db, discrepancy.NewService(db.Pool(), clk, nil), clk, webhook.Config{Workers: 2, MaxAttempts: 3, PollInterval: tick}, nil, nil)
 	require.NoError(t, err)
 	if h != nil {
 		svc.SetHandler(h)
@@ -270,6 +271,42 @@ func TestInbox_UnknownTransactionThenDead(t *testing.T) {
 	}, waitFor, tick)
 	assert.Len(t, h.calls(), 3, "MaxAttempts")
 	assert.Zero(t, f.handlerWrites(t), "each failed attempt rolled back")
+}
+
+// T016 AC-8: the last attempt that still finds no transaction records UNKNOWN_BANK_EVENT
+// (WARNING, no transaction) with the event's facts; earlier attempts record nothing.
+func TestInbox_DeadUnknownRecordsDiscrepancy(t *testing.T) {
+	h := &spyHandler{errs: []error{webhook.ErrUnknownTransaction, webhook.ErrUnknownTransaction, webhook.ErrUnknownTransaction}}
+	f := setup(t, h)
+	payload := bankEvent(t, webhook.EventDebitSucceeded, webhook.StatusSucceeded)
+	require.Equal(t, http.StatusOK, f.post(t, payload).Code)
+	f.start(t)
+	discrepancies := discrepancy.NewService(f.db.Pool(), f.clock, nil)
+
+	require.Eventually(t, func() bool { return len(h.calls()) == 1 && f.status(t) == "PENDING" }, waitFor, tick)
+	open, err := discrepancies.List(context.Background(), discrepancy.Filter{})
+	require.NoError(t, err)
+	assert.Empty(t, open, "not before the last attempt")
+
+	require.Eventually(t, func() bool {
+		f.clock.Advance(10 * time.Minute)
+		return f.status(t) == "DEAD"
+	}, waitFor, tick)
+	list, err := discrepancies.List(context.Background(), discrepancy.Filter{Status: discrepancy.StatusOpen})
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	d := list[0]
+	assert.Equal(t, discrepancy.KindUnknownBankEvent, d.Kind)
+	assert.Equal(t, discrepancy.SeverityWarning, d.Severity)
+	assert.Equal(t, uuid.Nil, d.TransactionID)
+	var sent banksim.Event
+	require.NoError(t, json.Unmarshal(payload, &sent))
+	var details map[string]any
+	require.NoError(t, json.Unmarshal(d.Details, &details))
+	assert.Equal(t, sent.EventID.String(), details["event_id"])
+	assert.Equal(t, webhook.EventDebitSucceeded, details["event_type"])
+	assert.Equal(t, sent.BankReference, details["bank_reference"])
+	assert.Equal(t, sent.IdempotencyKey.String(), details["idempotency_key"])
 }
 
 // AC-5: an unknown event type fails at once without calling the handler.

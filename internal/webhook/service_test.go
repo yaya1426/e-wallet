@@ -19,15 +19,20 @@ func (nopHandler) HandleBankEvent(context.Context, pgx.Tx, webhook.BankEvent) er
 
 func newTestService(t *testing.T) *webhook.Service {
 	t.Helper()
-	svc, err := webhook.NewService(&fakeDB{}, nil, clocktest.New(now), webhook.Config{Workers: 1, MaxAttempts: 1, PollInterval: time.Hour}, nil, nil)
+	svc, err := webhook.NewService(&fakeDB{}, nil, discardRecorder{}, clocktest.New(now), webhook.Config{Workers: 1, MaxAttempts: 1, PollInterval: time.Hour}, nil, nil)
 	require.NoError(t, err)
 	return svc
 }
 
 func TestNewService_InvalidConfig(t *testing.T) {
-	_, err := webhook.NewService(&fakeDB{}, nil, clocktest.New(now), webhook.Config{Workers: 0, MaxAttempts: 0, PollInterval: time.Second}, nil, nil)
+	_, err := webhook.NewService(&fakeDB{}, nil, discardRecorder{}, clocktest.New(now), webhook.Config{Workers: 0, MaxAttempts: 0, PollInterval: time.Second}, nil, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "webhook:")
+}
+
+func TestNewService_NeedsARecorder(t *testing.T) {
+	_, err := webhook.NewService(&fakeDB{}, nil, nil, clocktest.New(now), webhook.Config{Workers: 1, MaxAttempts: 1, PollInterval: time.Second}, nil, nil)
+	require.ErrorContains(t, err, "recorder")
 }
 
 func TestService_RunNeedsAHandler(t *testing.T) {
