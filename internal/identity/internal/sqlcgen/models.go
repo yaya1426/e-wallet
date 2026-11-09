@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type BankAccount struct {
@@ -49,6 +50,27 @@ type Posting struct {
 	Currency       string
 	BalanceAfter   int64
 	CreatedAt      time.Time
+}
+
+type Transaction struct {
+	ID                  uuid.UUID
+	Type                string
+	Status              string
+	InitiatorUserID     uuid.UUID
+	SourceWalletID      pgtype.UUID
+	DestinationWalletID pgtype.UUID
+	Amount              int64
+	Currency            string
+	IdempotencyKey      string
+	BankReference       pgtype.Text
+	BankAccountSnapshot []byte
+	Note                pgtype.Text
+	FailureCode         pgtype.Text
+	FailureMessage      pgtype.Text
+	LastReconciledAt    pgtype.Timestamptz
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	CompletedAt         pgtype.Timestamptz
 }
 
 type User struct {

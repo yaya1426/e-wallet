@@ -36,7 +36,7 @@ Every unit of work is a task folder `TNNN-<slug>/` (e.g. `T001-project-bootstrap
 | [T003](T003-ledger-core/task.md) | Ledger core (+ sqlc) | Done |
 | [T004](T004-onboarding-auth-wallet/task.md) | Onboarding: register, login, my wallet | Done |
 | [T005](T005-bank-account-linking/task.md) | Bank account linking | Done |
-| [T006](T006-transaction-module/task.md) | Transaction module | Ready |
+| [T006](T006-transaction-module/task.md) | Transaction module | Done |
 | [T007](T007-api-idempotency/task.md) | API idempotency | Ready |
 | [T008](T008-p2p-transfer/task.md) | P2P transfer | Ready |
 | [T009](T009-recipient-preview/task.md) | Recipient preview | Ready |

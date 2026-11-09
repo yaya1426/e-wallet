@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T006 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T006-transaction-module` |
 | Depends on   | T003, T004 |
@@ -96,15 +96,15 @@ None.
 HTTP endpoints (T010), the limit rules (T008), reconciliation fields being used (phase 2).
 
 ## Acceptance Criteria
-- [ ] AC-1 — `migrate up` applies version 5. A journal entry with an unknown `transaction_id` is now rejected by the FK.
-- [ ] AC-2 — `Create` of a TOPUP `PENDING`, a WITHDRAWAL `PENDING` and a P2P `COMPLETED` (with `completed_at` set) succeeds. A P2P with `PENDING`, a TOPUP with a source wallet, or P2P to the same wallet fails.
-- [ ] AC-3 — Same user + same idempotency key twice → `ErrDuplicateIdempotencyKey`. Different users with the same key → both fine.
-- [ ] AC-4 — Each allowed transition works and sets `updated_at` (and `completed_at` for terminal ones). Each not-allowed pair (incl. from `COMPLETED`/`FAILED`) → `ErrInvalidTransition`.
-- [ ] AC-5 — `Transition(from=PENDING)` on a row that is already `PROCESSING` → `ErrStatusConflict{Current: PROCESSING}` and no change. An unknown ID → `ErrNotFound`.
-- [ ] AC-6 — A patch with a `bank_reference` already used by another transaction → `ErrDuplicateBankReference`. `FindByBankRef` finds the row.
-- [ ] AC-7 — `SumOutgoingForDay` counts withdrawals PENDING/PROCESSING/COMPLETED + P2P COMPLETED of that Cairo day, and excludes FAILED, other wallets, incoming P2P, and rows from the day before/after (rows at 21:59:59Z and 22:00:00Z in winter).
-- [ ] AC-8 — `SumPendingTopUps` counts only PENDING/PROCESSING top-ups to that wallet.
-- [ ] AC-9 — Two concurrent `Transition(PENDING→PROCESSING)` on the same row → exactly one succeeds, and the other gets `ErrStatusConflict`.
+- [x] AC-1 — `migrate up` applies version 5. A journal entry with an unknown `transaction_id` is now rejected by the FK.
+- [x] AC-2 — `Create` of a TOPUP `PENDING`, a WITHDRAWAL `PENDING` and a P2P `COMPLETED` (with `completed_at` set) succeeds. A P2P with `PENDING`, a TOPUP with a source wallet, or P2P to the same wallet fails.
+- [x] AC-3 — Same user + same idempotency key twice → `ErrDuplicateIdempotencyKey`. Different users with the same key → both fine.
+- [x] AC-4 — Each allowed transition works and sets `updated_at` (and `completed_at` for terminal ones). Each not-allowed pair (incl. from `COMPLETED`/`FAILED`) → `ErrInvalidTransition`.
+- [x] AC-5 — `Transition(from=PENDING)` on a row that is already `PROCESSING` → `ErrStatusConflict{Current: PROCESSING}` and no change. An unknown ID → `ErrNotFound`.
+- [x] AC-6 — A patch with a `bank_reference` already used by another transaction → `ErrDuplicateBankReference`. `FindByBankRef` finds the row.
+- [x] AC-7 — `SumOutgoingForDay` counts withdrawals PENDING/PROCESSING/COMPLETED + P2P COMPLETED of that Cairo day, and excludes FAILED, other wallets, incoming P2P, and rows from the day before/after (rows at 21:59:59Z and 22:00:00Z in winter).
+- [x] AC-8 — `SumPendingTopUps` counts only PENDING/PROCESSING top-ups to that wallet.
+- [x] AC-9 — Two concurrent `Transition(PENDING→PROCESSING)` on the same row → exactly one succeeds, and the other gets `ErrStatusConflict`.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -133,3 +133,7 @@ HTTP endpoints (T010), the limit rules (T008), reconciliation fields being used 
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-05 | Ready | Planned with the phase-1 roadmap; all questions answered |
+| 2026-11-09 | In Progress | implement-task started on `task/T006-transaction-module`, stacked on T005 (PR #7, auto-merge) |
+| 2026-11-09 | In Review | Implemented and verified: make ci ok, 292 tests, transaction coverage 89.7% |
+| 2026-11-09 | Approved | Review round 1: Approved (1 Nit fixed) |
+| 2026-11-09 | Done | Finalized — PR opened with GitHub auto-merge (rebased onto main after T005 merged) |
