@@ -8,6 +8,8 @@ import (
 	"github.com/pb33f/libopenapi-validator/schema_validation"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/yaya1426/e-wallet/internal/banksim"
 )
 
 // TestBanksimSpec_IsValidOpenAPI31 lints the bank simulator contract like wallet.yaml (T013 AC-7).
@@ -27,10 +29,19 @@ func TestBanksimSpec_IsValidOpenAPI31(t *testing.T) {
 	model, err := doc.BuildV3Model()
 	require.NoError(t, err)
 	for path, method := range map[string]string{
-		"/v1/debits": "post", "/v1/payouts": "post", "/v1/operations/{idempotency_key}": "get",
+		"/v1/debits": "post", "/v1/payouts": "post", "/v1/operations/{idempotency_key}": "get", "/admin/scenarios": "post",
 	} {
 		item, ok := model.Model.Paths.PathItems.Get(path)
 		require.True(t, ok, "path %s", path)
 		assert.NotNil(t, item.GetOperations().GetOrZero(method), "%s %s", method, path)
+	}
+}
+
+// TestBanksimSpec_CataloguesEveryErrorCode: every code the simulator answers is documented.
+func TestBanksimSpec_CataloguesEveryErrorCode(t *testing.T) {
+	raw, err := os.ReadFile("banksim.yaml")
+	require.NoError(t, err)
+	for _, code := range []string{banksim.CodeInvalidRequest, banksim.CodeIdempotencyKeyReused, banksim.CodeInvalidAccount, banksim.CodeNotFound} {
+		assert.Contains(t, string(raw), "`"+code+"`")
 	}
 }
