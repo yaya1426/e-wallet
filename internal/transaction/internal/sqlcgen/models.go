@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type BankAccount struct {
@@ -17,6 +18,20 @@ type BankAccount struct {
 	HolderName string
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+}
+
+type IdempotencyKey struct {
+	UserID         uuid.UUID
+	Key            string
+	Method         string
+	Path           string
+	RequestHash    []byte
+	Status         string
+	ResponseStatus pgtype.Int4
+	ResponseBody   []byte
+	TransactionID  uuid.NullUUID
+	CreatedAt      time.Time
+	ExpiresAt      time.Time
 }
 
 type JournalEntry struct {
