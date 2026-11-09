@@ -4,7 +4,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +21,7 @@ import (
 	"github.com/yaya1426/e-wallet/internal/platform/database/databasetest"
 	"github.com/yaya1426/e-wallet/internal/platform/logger"
 	"github.com/yaya1426/e-wallet/internal/platform/metrics"
+	"github.com/yaya1426/e-wallet/migrations"
 )
 
 // newTestApp wires the wallet handler exactly like serve does, against the database at url.
@@ -101,7 +104,7 @@ func TestMigrateCommands_UpIdempotentAndStatus(t *testing.T) {
 
 	code, stdout, _ := runCLI(t, environ, "migrate", "status")
 	require.Equal(t, exitOK, code)
-	assert.Equal(t, "version=0 dirty=false latest=3\n", stdout)
+	assert.Equal(t, fmt.Sprintf("version=0 dirty=false latest=%d\n", latestMigration(t)), stdout)
 
 	code, _, stderr := runCLI(t, environ, "migrate", "up")
 	require.Equal(t, exitOK, code, stderr)
@@ -110,7 +113,7 @@ func TestMigrateCommands_UpIdempotentAndStatus(t *testing.T) {
 
 	code, stdout, _ = runCLI(t, environ, "migrate", "status")
 	require.Equal(t, exitOK, code)
-	assert.Equal(t, "version=3 dirty=false latest=3\n", stdout)
+	assert.Equal(t, fmt.Sprintf("version=%[1]d dirty=false latest=%[1]d\n", latestMigration(t)), stdout)
 }
 
 func TestMigrateUp_DirtyVersion_Exit1(t *testing.T) {
@@ -152,4 +155,12 @@ func TestServe_CancelledContext_ExitsZero(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("serve did not stop after cancel")
 	}
+}
+
+// latestMigration counts the embedded up migrations; versions are sequential from 1 (TDR-014).
+func latestMigration(t *testing.T) int {
+	t.Helper()
+	ups, err := fs.Glob(migrations.FS, "*.up.sql")
+	require.NoError(t, err)
+	return len(ups)
 }

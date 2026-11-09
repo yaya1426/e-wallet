@@ -48,6 +48,8 @@ func TestSpec_DescribesTheEndpoints(t *testing.T) {
 		{"/v1/auth/register", "post"},
 		{"/v1/auth/login", "post"},
 		{"/v1/me/wallet", "get"},
+		{"/v1/me/bank-account", "put"},
+		{"/v1/me/bank-account", "get"},
 	}
 	for _, tt := range tests {
 		item, ok := paths.Get(tt.path)
@@ -65,6 +67,7 @@ func TestSpec_CataloguesEveryErrorCode(t *testing.T) {
 		identity.CodeInvalidPhone, identity.CodeInvalidPassword, identity.CodeInvalidName,
 		identity.CodePhoneAlreadyRegistered, identity.CodeInvalidCredentials,
 		identity.CodeUserDisabled, identity.CodeTooManyRequests, identity.CodeUnauthenticated,
+		identity.CodeInvalidIBAN, identity.CodeInvalidHolderName, identity.CodeBankAccountNotFound,
 	}
 	for _, code := range codes {
 		assert.True(t, strings.Contains(string(raw), "`"+code+"`"), "error code %s is missing from %s", code, specFile)

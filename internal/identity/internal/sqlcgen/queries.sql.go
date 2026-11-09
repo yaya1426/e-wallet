@@ -36,6 +36,24 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
 	return err
 }
 
+const getBankAccountByUserID = `-- name: GetBankAccountByUserID :one
+SELECT id, user_id, iban, holder_name, created_at, updated_at FROM bank_accounts WHERE user_id = $1
+`
+
+func (q *Queries) GetBankAccountByUserID(ctx context.Context, userID uuid.UUID) (BankAccount, error) {
+	row := q.db.QueryRow(ctx, getBankAccountByUserID, userID)
+	var i BankAccount
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Iban,
+		&i.HolderName,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getUser = `-- name: GetUser :one
 SELECT id, phone_e164, full_name, password_hash, status, created_at FROM users WHERE id = $1
 `
@@ -68,6 +86,43 @@ func (q *Queries) GetUserByPhone(ctx context.Context, phoneE164 string) (User, e
 		&i.PasswordHash,
 		&i.Status,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const upsertBankAccount = `-- name: UpsertBankAccount :one
+INSERT INTO bank_accounts (id, user_id, iban, holder_name, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $5)
+ON CONFLICT (user_id) DO UPDATE
+   SET iban = EXCLUDED.iban, holder_name = EXCLUDED.holder_name, updated_at = EXCLUDED.updated_at
+RETURNING id, user_id, iban, holder_name, created_at, updated_at
+`
+
+type UpsertBankAccountParams struct {
+	ID         uuid.UUID
+	UserID     uuid.UUID
+	Iban       string
+	HolderName string
+	Now        time.Time
+}
+
+// One account per user: replacing keeps the row's id and created_at (T005).
+func (q *Queries) UpsertBankAccount(ctx context.Context, arg UpsertBankAccountParams) (BankAccount, error) {
+	row := q.db.QueryRow(ctx, upsertBankAccount,
+		arg.ID,
+		arg.UserID,
+		arg.Iban,
+		arg.HolderName,
+		arg.Now,
+	)
+	var i BankAccount
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Iban,
+		&i.HolderName,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

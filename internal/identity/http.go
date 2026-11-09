@@ -24,6 +24,9 @@ const (
 	CodeUserDisabled           = "USER_DISABLED"
 	CodeTooManyRequests        = "TOO_MANY_REQUESTS"
 	CodeUnauthenticated        = "UNAUTHENTICATED"
+	CodeInvalidIBAN            = "INVALID_IBAN"
+	CodeInvalidHolderName      = "INVALID_HOLDER_NAME"
+	CodeBankAccountNotFound    = "BANK_ACCOUNT_NOT_FOUND"
 )
 
 // Handler serves the auth endpoints and provides the auth middleware.
@@ -38,10 +41,12 @@ func NewHandler(svc *Service, limiter *LoginLimiter, log *slog.Logger) *Handler 
 	return &Handler{svc: svc, limiter: limiter, log: log}
 }
 
-// Routes mounts the auth endpoints on mux.
+// Routes mounts the auth and bank-account endpoints on mux.
 func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/auth/register", h.register)
 	mux.HandleFunc("POST /v1/auth/login", h.login)
+	mux.Handle("PUT /v1/me/bank-account", h.RequireAuth(http.HandlerFunc(h.putBankAccount)))
+	mux.Handle("GET /v1/me/bank-account", h.RequireAuth(http.HandlerFunc(h.getBankAccount)))
 }
 
 type registerRequest struct {
@@ -111,6 +116,67 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type bankAccountRequest struct {
+	IBAN       string `json:"iban"`
+	HolderName string `json:"holder_name"`
+}
+
+type bankAccountResponse struct {
+	IBAN       string    `json:"iban"`
+	HolderName string    `json:"holder_name"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+func (h *Handler) putBankAccount(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.requestUser(w, r)
+	if !ok {
+		return
+	}
+	var req bankAccountRequest
+	if err := httpserver.DecodeJSON(w, r, &req); err != nil {
+		httpserver.WriteDecodeError(w, err)
+		return
+	}
+	account, err := h.svc.LinkBankAccount(r.Context(), userID, req.IBAN, req.HolderName)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	writeBankAccount(w, account)
+}
+
+func (h *Handler) getBankAccount(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.requestUser(w, r)
+	if !ok {
+		return
+	}
+	account, err := h.svc.LinkedBankAccount(r.Context(), userID)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	writeBankAccount(w, account)
+}
+
+func writeBankAccount(w http.ResponseWriter, account BankAccount) {
+	httpserver.WriteJSON(w, http.StatusOK, bankAccountResponse{
+		IBAN:       account.IBAN,
+		HolderName: account.HolderName,
+		UpdatedAt:  account.UpdatedAt.UTC(),
+	})
+}
+
+// requestUser returns the user set by RequireAuth. Reaching a handler without one is a
+// wiring bug, answered with 500.
+func (h *Handler) requestUser(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
+	userID, ok := httpserver.UserID(r.Context())
+	if !ok {
+		h.log.ErrorContext(r.Context(), "identity: request without authenticated user")
+		httpserver.WriteError(w, http.StatusInternalServerError, httpserver.CodeInternal, "Internal server error.")
+	}
+	return userID, ok
+}
+
 // RequireAuth accepts only requests with a valid "Authorization: Bearer <jwt>" of an active
 // user and puts the user ID in the request context (httpserver.UserID).
 func (h *Handler) RequireAuth(next http.Handler) http.Handler {
@@ -144,6 +210,12 @@ func (h *Handler) writeError(w http.ResponseWriter, r *http.Request, err error) 
 		httpserver.WriteError(w, http.StatusUnauthorized, CodeInvalidCredentials, "Phone or password is incorrect.")
 	case errors.Is(err, ErrUserDisabled):
 		httpserver.WriteError(w, http.StatusForbidden, CodeUserDisabled, "This user is disabled.")
+	case errors.Is(err, ErrInvalidIBAN):
+		httpserver.WriteError(w, http.StatusBadRequest, CodeInvalidIBAN, "IBAN must be a valid Egyptian IBAN (EG followed by 27 digits).")
+	case errors.Is(err, ErrInvalidHolderName):
+		httpserver.WriteError(w, http.StatusBadRequest, CodeInvalidHolderName, "Holder name must be 2 to 100 characters long.")
+	case errors.Is(err, ErrBankAccountNotFound):
+		httpserver.WriteError(w, http.StatusNotFound, CodeBankAccountNotFound, "No bank account is linked yet.")
 	case errors.Is(err, ErrUnauthenticated):
 		httpserver.WriteError(w, http.StatusUnauthorized, CodeUnauthenticated, "Missing or invalid access token.")
 	case errors.Is(err, database.ErrTryAgain):
