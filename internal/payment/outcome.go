@@ -23,14 +23,8 @@ var _ webhook.EventHandler = (*Service)(nil)
 // the transaction by the bank reference or, when the reference is not stored yet (the
 // webhook beat the outbox worker), by the idempotency key, which is our transaction ID. No
 // match returns webhook.ErrUnknownTransaction, so the inbox retries the event.
-//
-// Payout events return ErrUnsupportedOutcome until withdrawals are settled (T019), so the
-// inbox retries them.
 func (s *Service) HandleBankEvent(ctx context.Context, tx pgx.Tx, ev webhook.BankEvent) error {
 	outcome := outcomeOf(ev)
-	if outcome.Kind == bank.KindPayout {
-		return fmt.Errorf("%w: %s event %s", ErrUnsupportedOutcome, ev.Type, ev.EventID)
-	}
 	txn, err := s.transactions.FindByBankRef(ctx, tx, ev.BankReference)
 	switch {
 	case err == nil:
@@ -83,8 +77,12 @@ func outcomeOf(ev webhook.BankEvent) bank.Outcome {
 //   - the amount (or currency) differs (PRD-002 TU-BR-3).
 //
 // Otherwise a PENDING transaction first moves to PROCESSING with the outcome's reference;
-// then a debit success posts TOPUP_SETTLE and completes the top-up, and a debit failure fails
-// it with the bank's code and message. Payout outcomes return ErrUnsupportedOutcome (T019).
+// then:
+//   - top-up (debit): success posts TOPUP_SETTLE and completes it; failure fails it with the
+//     bank's code and message (no money had moved);
+//   - withdrawal (payout): success posts WITHDRAWAL_SETTLE and completes it (the wallet was
+//     already debited by the reserve); failure fails it and refunds the reserve
+//     (WITHDRAWAL_REFUND), only now that the bank confirmed the failure (PRD-003 WD-BR-4).
 func (s *Service) ApplyBankOutcome(ctx context.Context, tx pgx.Tx, txnID uuid.UUID, outcome bank.Outcome) error {
 	if !outcome.Final() {
 		return fmt.Errorf("%w: status %q", ErrNotFinal, outcome.Status)
@@ -98,9 +96,6 @@ func (s *Service) ApplyBankOutcome(ctx context.Context, tx pgx.Tx, txnID uuid.UU
 		return s.record(ctx, tx, txn, discrepancy.KindStatusMismatch, discrepancy.SeverityCritical, outcome, map[string]any{
 			"reason": "the outcome's kind does not match the transaction type",
 		})
-	}
-	if outcome.Kind == bank.KindPayout {
-		return fmt.Errorf("%w: payout for transaction %s", ErrUnsupportedOutcome, txn.ID)
 	}
 	if txn.BankReference != "" && outcome.BankReference != "" && txn.BankReference != outcome.BankReference {
 		return s.record(ctx, tx, txn, discrepancy.KindStatusMismatch, discrepancy.SeverityCritical, outcome, map[string]any{
@@ -130,12 +125,17 @@ func (s *Service) ApplyBankOutcome(ctx context.Context, tx pgx.Tx, txnID uuid.UU
 			return err
 		}
 	}
-	if outcome.Status == bank.StatusSucceeded {
+	code, msg := outcome.FailureCode, outcome.FailureMessage
+	switch {
+	case txn.Type == transaction.TypeTopUp && outcome.Status == bank.StatusSucceeded:
 		err = s.completeTopUp(ctx, tx, txn)
-	} else {
-		code, msg := outcome.FailureCode, outcome.FailureMessage
+	case txn.Type == transaction.TypeTopUp:
 		_, err = s.transactions.Transition(ctx, tx, txn.ID, transaction.StatusProcessing, transaction.StatusFailed,
 			transaction.Patch{FailureCode: &code, FailureMessage: &msg})
+	case outcome.Status == bank.StatusSucceeded:
+		err = s.settleWithdrawal(ctx, tx, txn)
+	default:
+		err = s.failAndRefund(ctx, tx, txn, code, msg)
 	}
 	if err != nil {
 		return err
@@ -169,6 +169,33 @@ func (s *Service) completeTopUp(ctx context.Context, tx pgx.Tx, txn transaction.
 		// ErrDuplicateEntry cannot happen after the status checks above; if it does, it is a
 		// bug to look at, so it is returned (the event is retried and logged), never ignored.
 		return err
+	}
+	_, err = s.transactions.Transition(ctx, tx, txn.ID, transaction.StatusProcessing, transaction.StatusCompleted, transaction.Patch{})
+	return err
+}
+
+// settleWithdrawal completes a withdrawal the bank paid out: the reserved money leaves for
+// the bank (WITHDRAWAL_SETTLE: Dr WITHDRAWALS_IN_TRANSIT / Cr BANK_SETTLEMENT, PRD-003
+// WD-BR-2). The wallet balance does not change again: the reserve already debited it.
+func (s *Service) settleWithdrawal(ctx context.Context, tx pgx.Tx, txn transaction.Transaction) error {
+	inTransit, err := s.ledger.GetAccountByCode(ctx, tx, ledger.CodeWithdrawalsInTransit)
+	if err != nil {
+		return err
+	}
+	settlement, err := s.ledger.GetAccountByCode(ctx, tx, ledger.CodeBankSettlement)
+	if err != nil {
+		return err
+	}
+	if _, err := s.ledger.Post(ctx, tx, ledger.Entry{
+		TransactionID: txn.ID,
+		Type:          ledger.EntryWithdrawalSettle,
+		Description:   "Withdrawal paid out by the bank",
+		Postings: []ledger.Posting{
+			{AccountID: inTransit.ID, Direction: ledger.Debit, Amount: txn.Amount},
+			{AccountID: settlement.ID, Direction: ledger.Credit, Amount: txn.Amount},
+		},
+	}); err != nil {
+		return err // ErrDuplicateEntry cannot happen after the status checks; never ignored
 	}
 	_, err = s.transactions.Transition(ctx, tx, txn.ID, transaction.StatusProcessing, transaction.StatusCompleted, transaction.Patch{})
 	return err

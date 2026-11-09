@@ -401,11 +401,6 @@ func TestApplyBankOutcome_Errors(t *testing.T) {
 	pending.Status = bank.StatusPending
 	assert.ErrorIs(t, f.apply(t, txn.ID, pending), payment.ErrNotFinal)
 
-	w := f.withdrawal(t, "BSIM-W")
-	payout := succeeded(t, amount, "BSIM-W")
-	payout.Kind = bank.KindPayout
-	assert.ErrorIs(t, f.apply(t, w.ID, payout), payment.ErrUnsupportedOutcome, "until T019")
-
 	assert.ErrorIs(t, f.apply(t, uuid.New(), succeeded(t, amount, "BSIM-X")), transaction.ErrNotFound)
 	assert.Empty(t, f.discrepancyList(t))
 	assert.Empty(t, f.entries(t, txn.ID))
@@ -478,12 +473,11 @@ func TestHandleBankEvent_Lookup(t *testing.T) {
 		err := f.handle(t, event(t, ghost, webhook.EventDebitSucceeded, "BSIM-NONE", amount))
 		assert.ErrorIs(t, err, webhook.ErrUnknownTransaction)
 	})
-	t.Run("payout events wait for T019", func(t *testing.T) {
+	t.Run("payout events are applied (T019)", func(t *testing.T) {
 		f := setup(t)
 		w := f.withdrawal(t, "BSIM-W")
-		err := f.handle(t, event(t, w, webhook.EventPayoutSucceeded, "BSIM-W", amount))
-		assert.ErrorIs(t, err, payment.ErrUnsupportedOutcome)
-		assert.Equal(t, transaction.StatusProcessing, f.get(t, w.ID).Status)
+		require.NoError(t, f.handle(t, event(t, w, webhook.EventPayoutSucceeded, "BSIM-W", amount)))
+		assert.Equal(t, transaction.StatusCompleted, f.get(t, w.ID).Status)
 	})
 	t.Run("reference of one transaction, idempotency key of another", func(t *testing.T) {
 		f := setup(t)
