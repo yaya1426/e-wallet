@@ -47,6 +47,7 @@ services:
       LOG_LEVEL: info
       # DEV ONLY: a public, well-known secret for local runs and CI. Production sets its own.
       JWT_SECRET: dev-only-jwt-secret-change-me-0123456789
+      BANK_BASE_URL: http://banksim:9090
     ports:
       - "8080:8080"
     depends_on:

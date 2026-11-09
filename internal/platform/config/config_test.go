@@ -32,6 +32,8 @@ func TestConfig_LoadWallet_Defaults(t *testing.T) {
 		OutboxEnabled: true, OutboxWorkers: 8, OutboxMaxAttempts: 10,
 		QueuePollInterval: 500 * time.Millisecond,
 
+		BankHTTPTimeout: 5 * time.Second,
+
 		LimitTopUpMin: 1000, LimitTopUpMax: 3_000_000,
 		LimitWithdrawalMin: 1000, LimitWithdrawalMax: 3_000_000,
 		LimitP2PMin: 100, LimitP2PMax: 3_000_000,
@@ -128,6 +130,41 @@ func TestConfig_Outbox(t *testing.T) {
 	}
 }
 
+func TestConfig_Bank(t *testing.T) {
+	serve := map[string]string{"DATABASE_URL": testDatabaseURL, "JWT_SECRET": strings.Repeat("s", 32)}
+	with := func(kv ...string) map[string]string {
+		env := map[string]string{}
+		for k, v := range serve {
+			env[k] = v
+		}
+		for i := 0; i < len(kv); i += 2 {
+			env[kv[i]] = kv[i+1]
+		}
+		return env
+	}
+
+	cfg, err := LoadWallet(with("BANK_BASE_URL", "http://banksim:9090", "BANK_HTTP_TIMEOUT", "2s"))
+	require.NoError(t, err)
+	require.NoError(t, cfg.ValidateServe())
+	assert.Equal(t, "http://banksim:9090", cfg.BankBaseURL)
+	assert.Equal(t, 2*time.Second, cfg.BankHTTPTimeout)
+
+	// The migrate commands only load the config: no bank URL needed.
+	cfg, err = LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL})
+	require.NoError(t, err)
+	assert.ErrorContains(t, cfg.ValidateServe(), "BANK_BASE_URL is required")
+
+	for _, bad := range []string{"banksim:9090", "/v1", "ftp://bank", "http://", "://x"} {
+		cfg, err := LoadWallet(with("BANK_BASE_URL", bad))
+		require.NoError(t, err)
+		assert.ErrorContains(t, cfg.ValidateServe(), "BANK_BASE_URL", bad)
+	}
+	for _, bad := range []string{"0s", "-1s", "5"} {
+		_, err := LoadWallet(with("BANK_BASE_URL", "http://b", "BANK_HTTP_TIMEOUT", bad))
+		assert.ErrorContains(t, err, "BANK_HTTP_TIMEOUT", bad)
+	}
+}
+
 func TestConfig_LoadBanksim_Defaults(t *testing.T) {
 	cfg, err := LoadBanksim(map[string]string{})
 	require.NoError(t, err)
@@ -165,7 +202,7 @@ func TestConfig_ValidateServe_JWT(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			environ := map[string]string{"DATABASE_URL": testDatabaseURL}
+			environ := map[string]string{"DATABASE_URL": testDatabaseURL, "BANK_BASE_URL": "http://banksim:9090"}
 			for k, v := range tt.environ {
 				environ[k] = v
 			}

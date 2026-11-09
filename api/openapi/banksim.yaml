@@ -1,0 +1,186 @@
+openapi: 3.1.0
+info:
+  title: Bank Simulator API
+  version: 0.1.0
+  summary: The bank the wallet talks to in phase 1 (TDR-008).
+  description: |
+    Contract between the wallet's bank adapter (`internal/bank/banksim`, T013) and the bank
+    simulator (`cmd/banksim`, T014). The simulator acts like an external bank: it accepts
+    debits (top-ups) and payouts (withdrawals) asynchronously and reports their status.
+
+    Conventions: amounts are integer minor units (`amount_minor`, piasters for EGP) with an
+    ISO 4217 `currency` (TDR-003 §5); `snake_case` JSON. Operations are idempotent by the
+    `Idempotency-Key` header, which is the wallet transaction ID (TDR-005 layer 3): a repeated
+    key with the same body returns the original response and creates no new operation.
+
+    How the wallet reads the answers: `408`, `429`, `5xx`, timeouts and unreadable bodies are
+    temporary failures (retried); any other `4xx` is a business rejection (not retried).
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: http://localhost:9090
+    description: Local docker compose stack
+tags:
+  - name: operations
+    description: Debits, payouts and their status.
+paths:
+  /v1/debits:
+    post:
+      tags: [operations]
+      operationId: createDebit
+      summary: Pull money from a customer's bank account (top-up)
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OperationRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/Accepted'
+        '422':
+          $ref: '#/components/responses/Rejected'
+  /v1/payouts:
+    post:
+      tags: [operations]
+      operationId: createPayout
+      summary: Push money to a customer's bank account (withdrawal)
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OperationRequest'
+      responses:
+        '202':
+          $ref: '#/components/responses/Accepted'
+        '422':
+          $ref: '#/components/responses/Rejected'
+  /v1/operations/{idempotency_key}:
+    get:
+      tags: [operations]
+      operationId: getOperation
+      summary: Current status of an operation
+      parameters:
+        - name: idempotency_key
+          in: path
+          required: true
+          description: The `Idempotency-Key` the operation was created with.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
+        '404':
+          description: '`NOT_FOUND`: no operation was created with this key.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: The wallet transaction ID (a UUID).
+      schema:
+        type: string
+        format: uuid
+  responses:
+    Accepted:
+      description: The operation was accepted and is being processed; its outcome comes later.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Acceptance'
+    Rejected:
+      description: The bank refused the operation for a business reason (e.g. `INVALID_ACCOUNT`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    OperationRequest:
+      type: object
+      additionalProperties: false
+      required: [amount_minor, currency, iban, holder_name, reference]
+      properties:
+        amount_minor:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Amount in minor units (piasters).
+        currency:
+          type: string
+          enum: [EGP]
+        iban:
+          type: string
+          description: The customer's bank account.
+        holder_name:
+          type: string
+          description: The account holder's name.
+        reference:
+          type: string
+          format: uuid
+          description: Same value as the `Idempotency-Key` header.
+    Acceptance:
+      type: object
+      required: [bank_reference, status]
+      properties:
+        bank_reference:
+          type: string
+          minLength: 1
+          description: The bank's ID of the operation.
+        status:
+          type: string
+          enum: [PENDING]
+    Operation:
+      type: object
+      required: [idempotency_key, bank_reference, kind, status, amount_minor, currency]
+      properties:
+        idempotency_key:
+          type: string
+          format: uuid
+        bank_reference:
+          type: string
+        kind:
+          type: string
+          enum: [DEBIT, PAYOUT]
+        status:
+          type: string
+          enum: [PENDING, SUCCEEDED, FAILED]
+        amount_minor:
+          type: integer
+          format: int64
+        currency:
+          type: string
+          enum: [EGP]
+        failure_code:
+          type: string
+          description: Set when `status` is `FAILED`.
+        failure_message:
+          type: string
+          description: Set when `status` is `FAILED`.
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code]
+          properties:
+            code:
+              type: string
+            message:
+              type: string

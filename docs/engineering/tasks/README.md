@@ -43,7 +43,7 @@ Every unit of work is a task folder `TNNN-<slug>/` (e.g. `T001-project-bootstrap
 | [T010](T010-transaction-history-api/task.md) | Transaction history API | Done |
 | [T011](T011-generic-db-queue/task.md) | Generic DB queue | Done |
 | [T012](T012-outbox-module/task.md) | Outbox module | Done |
-| [T013](T013-bank-gateway-port/task.md) | Bank gateway port + banksim adapter | Ready |
+| [T013](T013-bank-gateway-port/task.md) | Bank gateway port + banksim adapter | Done |
 | [T014](T014-bank-simulator-core/task.md) | Bank simulator core | Ready |
 | [T015](T015-webhook-inbox/task.md) | Webhook ingestion (inbox) | Ready |
 | [T016](T016-discrepancy-apply-bank-outcome/task.md) | Discrepancy module + ApplyBankOutcome (debits) | Ready |

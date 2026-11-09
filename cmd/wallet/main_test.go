@@ -18,6 +18,9 @@ import (
 // testJWTSecret is a 32-byte secret for tests that start serve.
 const testJWTSecret = "test-jwt-secret-of-32-bytes-long"
 
+// testBankURL is a BANK_BASE_URL for tests that start serve; nothing calls it yet.
+const testBankURL = "http://127.0.0.1:9"
+
 func runCLI(t *testing.T, environ map[string]string, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	var out, errOut bytes.Buffer
@@ -73,6 +76,7 @@ func TestServe_InvalidConfig_Exit1NamesVariable(t *testing.T) {
 		{"serve, no JWT_SECRET", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x"}, "JWT_SECRET"},
 		{"serve, 31-byte JWT_SECRET", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x", "JWT_SECRET": testJWTSecret[:31]}, "JWT_SECRET"},
 		{"serve, zero JWT_TTL", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x", "JWT_SECRET": testJWTSecret, "JWT_TTL": "0s"}, "JWT_TTL"},
+		{"serve, no BANK_BASE_URL", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x", "JWT_SECRET": testJWTSecret}, "BANK_BASE_URL"},
 		{"serve, P2P min above max", []string{"serve"}, map[string]string{"DATABASE_URL": "postgres://x", "JWT_SECRET": testJWTSecret, "LIMIT_P2P_MIN": "500", "LIMIT_P2P_MAX": "400"}, "LIMIT_P2P_MIN"},
 		{"migrate up, no DATABASE_URL", []string{"migrate", "up"}, map[string]string{}, "DATABASE_URL"},
 		{"migrate status, no DATABASE_URL", []string{"migrate", "status"}, map[string]string{}, "DATABASE_URL"},
@@ -89,8 +93,9 @@ func TestServe_InvalidConfig_Exit1NamesVariable(t *testing.T) {
 
 func TestServe_DatabaseUnreachable_Exit1(t *testing.T) {
 	code, stdout, _ := runCLI(t, map[string]string{
-		"DATABASE_URL": "postgres://wallet:wallet@127.0.0.1:1/wallet?sslmode=disable&connect_timeout=1",
-		"JWT_SECRET":   testJWTSecret,
+		"DATABASE_URL":  "postgres://wallet:wallet@127.0.0.1:1/wallet?sslmode=disable&connect_timeout=1",
+		"JWT_SECRET":    testJWTSecret,
+		"BANK_BASE_URL": testBankURL,
 	}, "serve")
 
 	assert.Equal(t, exitError, code)
