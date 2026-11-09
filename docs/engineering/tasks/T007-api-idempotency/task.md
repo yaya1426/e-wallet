@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T007 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T007-api-idempotency` |
 | Depends on   | T002, T004 |
@@ -100,15 +100,15 @@ func (s *Service) Complete(ctx, tx, userID, key string, status int, body any, tx
 Wiring into an actual endpoint (T008 is the first), idempotency for webhooks (TDR-007, T015).
 
 ## Acceptance Criteria
-- [ ] AC-1 — `KeyFromRequest`: missing/empty → `ErrKeyRequired`; `"abc"` or 65 chars → `ErrKeyInvalid`; any UUID version → ok.
-- [ ] AC-2 — `RequestHash` is the same for equal structs whatever the JSON key order or whitespace was, and differs when any field differs.
-- [ ] AC-3 — First `Begin` → nil; then `Complete(201, body)` + commit. A second `Begin` with the same hash → `Replay{201, body}`, and `WriteReplay` sets `Idempotent-Replayed: true`.
-- [ ] AC-4 — A second `Begin` with a different hash → `ErrKeyReused`.
-- [ ] AC-5 — A stored 4xx (e.g. `422`) is replayed the same way.
-- [ ] AC-6 — If the first tx rolls back, a later `Begin` with the same key → nil (fresh start).
-- [ ] AC-7 — Two concurrent requests with the same key: while request 1 holds its uncommitted insert longer than `DB_LOCK_TIMEOUT`, request 2 gets `ErrRequestInProgress`, and `InTx` did **not** retry (one attempt, no `db_tx_retries_total` increment). If request 1 commits within the timeout, request 2 gets the replay.
-- [ ] AC-8 — An expired row is replaced by a new `Begin`. `Cleanup` deletes expired rows and keeps live ones (fake clock).
-- [ ] AC-9 — Config defaults `IDEMPOTENCY_TTL=24h`, `IDEMPOTENCY_CLEANUP_INTERVAL=1h`; ≤ 0 → error naming the variable.
+- [x] AC-1 — `KeyFromRequest`: missing/empty → `ErrKeyRequired`; `"abc"` or 65 chars → `ErrKeyInvalid`; any UUID version → ok.
+- [x] AC-2 — `RequestHash` is the same for equal structs whatever the JSON key order or whitespace was, and differs when any field differs.
+- [x] AC-3 — First `Begin` → nil; then `Complete(201, body)` + commit. A second `Begin` with the same hash → `Replay{201, body}`, and `WriteReplay` sets `Idempotent-Replayed: true`.
+- [x] AC-4 — A second `Begin` with a different hash → `ErrKeyReused`.
+- [x] AC-5 — A stored 4xx (e.g. `422`) is replayed the same way.
+- [x] AC-6 — If the first tx rolls back, a later `Begin` with the same key → nil (fresh start).
+- [x] AC-7 — Two concurrent requests with the same key: while request 1 holds its uncommitted insert longer than `DB_LOCK_TIMEOUT`, request 2 gets `ErrRequestInProgress`, and `InTx` did **not** retry (one attempt, no `db_tx_retries_total` increment). If request 1 commits within the timeout, request 2 gets the replay.
+- [x] AC-8 — An expired row is replaced by a new `Begin`. `Cleanup` deletes expired rows and keeps live ones (fake clock).
+- [x] AC-9 — Config defaults `IDEMPOTENCY_TTL=24h`, `IDEMPOTENCY_CLEANUP_INTERVAL=1h`; ≤ 0 → error naming the variable.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -135,3 +135,7 @@ Wiring into an actual endpoint (T008 is the first), idempotency for webhooks (TD
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-05 | Ready | Planned with the phase-1 roadmap; all questions answered |
+| 2026-11-09 | In Progress | implement-task started on `task/T007-api-idempotency`, stacked on T006 (local) and T005 (PR #7) |
+| 2026-11-09 | In Review | Implemented and verified: make ci ok, 316 tests, coverage 85.4% |
+| 2026-11-09 | Approved | Review round 1: Approved (1 Minor fixed, 1 Nit accepted) |
+| 2026-11-09 | Done | Finalized — PR opened with GitHub auto-merge (rebased onto main after T006 merged) |

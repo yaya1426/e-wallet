@@ -24,6 +24,11 @@ type Wallet struct {
 	DBStatementTimeout time.Duration `env:"DB_STATEMENT_TIMEOUT" envDefault:"5s"`
 	DBTxMaxRetries     int           `env:"DB_TX_MAX_RETRIES"    envDefault:"3"`
 
+	// API idempotency keys (TDR-005 layer 1): how long a key is kept, and how often expired
+	// keys are deleted.
+	IdempotencyTTL             time.Duration `env:"IDEMPOTENCY_TTL"              envDefault:"24h"`
+	IdempotencyCleanupInterval time.Duration `env:"IDEMPOTENCY_CLEANUP_INTERVAL" envDefault:"1h"`
+
 	// Access tokens (TDR-011). Only `serve` needs them, so they are checked by ValidateServe:
 	// the migrate commands (e.g. the pre-deploy job) run without a JWT secret.
 	JWTSecret string        `env:"JWT_SECRET"`
@@ -85,6 +90,8 @@ func (cfg Wallet) validate() error {
 		{"SHUTDOWN_TIMEOUT", cfg.ShutdownTimeout},
 		{"DB_LOCK_TIMEOUT", cfg.DBLockTimeout},
 		{"DB_STATEMENT_TIMEOUT", cfg.DBStatementTimeout},
+		{"IDEMPOTENCY_TTL", cfg.IdempotencyTTL},
+		{"IDEMPOTENCY_CLEANUP_INTERVAL", cfg.IdempotencyCleanupInterval},
 	}
 	for _, p := range positive {
 		if p.value <= 0 {

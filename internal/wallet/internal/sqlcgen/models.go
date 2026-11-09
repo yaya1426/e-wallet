@@ -20,6 +20,20 @@ type BankAccount struct {
 	UpdatedAt  time.Time
 }
 
+type IdempotencyKey struct {
+	UserID         uuid.UUID
+	Key            string
+	Method         string
+	Path           string
+	RequestHash    []byte
+	Status         string
+	ResponseStatus pgtype.Int4
+	ResponseBody   []byte
+	TransactionID  pgtype.UUID
+	CreatedAt      time.Time
+	ExpiresAt      time.Time
+}
+
 type JournalEntry struct {
 	ID            uuid.UUID
 	TransactionID uuid.UUID

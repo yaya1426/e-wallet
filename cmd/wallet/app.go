@@ -10,6 +10,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/yaya1426/e-wallet/internal/idempotency"
 	"github.com/yaya1426/e-wallet/internal/identity"
 	"github.com/yaya1426/e-wallet/internal/ledger"
 	"github.com/yaya1426/e-wallet/internal/platform/clock"
@@ -55,6 +56,9 @@ func serve(ctx context.Context, environ map[string]string, stdout, stderr io.Wri
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return srv.Run(gctx) })
+	g.Go(func() error {
+		return idempotency.NewCleanup(api.idempotency, db.Pool(), cfg.IdempotencyCleanupInterval, log).Run(gctx)
+	})
 	if err := g.Wait(); err != nil {
 		log.Error("wallet stopped with error", slog.Any("error", err))
 		return exitError
@@ -161,8 +165,9 @@ func newHandler(log *slog.Logger, m *metrics.Metrics, checks []httpserver.Readin
 // api is the composition root of the business modules (architecture §3): it builds the
 // services in dependency order (ledger → wallet → identity) and their HTTP handlers.
 type api struct {
-	identity *identity.Handler
-	wallet   *wallet.Handler
+	identity    *identity.Handler
+	wallet      *wallet.Handler
+	idempotency *idempotency.Service // used by the money endpoints (T008+) and the cleanup job
 }
 
 // newAPI wires the modules. bcryptCost 0 means identity.DefaultBcryptCost (tests pass a
@@ -177,8 +182,9 @@ func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logge
 		return nil, err
 	}
 	return &api{
-		identity: identity.NewHandler(identitySvc, identity.NewLoginLimiter(clk), log),
-		wallet:   wallet.NewHandler(walletSvc, log),
+		identity:    identity.NewHandler(identitySvc, identity.NewLoginLimiter(clk), log),
+		wallet:      wallet.NewHandler(walletSvc, log),
+		idempotency: idempotency.NewService(clk, cfg.IdempotencyTTL),
 	}, nil
 }
 

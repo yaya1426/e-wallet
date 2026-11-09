@@ -26,6 +26,9 @@ func TestConfig_LoadWallet_Defaults(t *testing.T) {
 		DBStatementTimeout: 5 * time.Second,
 		DBTxMaxRetries:     3,
 
+		IdempotencyTTL:             24 * time.Hour,
+		IdempotencyCleanupInterval: time.Hour,
+
 		JWTTTL: 15 * time.Minute,
 	}, cfg)
 }
@@ -72,6 +75,10 @@ func TestConfig_LoadWallet_InvalidValuesNameTheVariable(t *testing.T) {
 		{"unparsable DB_STATEMENT_TIMEOUT", map[string]string{"DATABASE_URL": testDatabaseURL, "DB_STATEMENT_TIMEOUT": "5"}, "DB_STATEMENT_TIMEOUT"},
 		{"negative DB_TX_MAX_RETRIES", map[string]string{"DATABASE_URL": testDatabaseURL, "DB_TX_MAX_RETRIES": "-1"}, "DB_TX_MAX_RETRIES"},
 		{"non-number DB_TX_MAX_RETRIES", map[string]string{"DATABASE_URL": testDatabaseURL, "DB_TX_MAX_RETRIES": "three"}, "DB_TX_MAX_RETRIES"},
+		{"zero IDEMPOTENCY_TTL", map[string]string{"DATABASE_URL": testDatabaseURL, "IDEMPOTENCY_TTL": "0s"}, "IDEMPOTENCY_TTL"},
+		{"negative IDEMPOTENCY_TTL", map[string]string{"DATABASE_URL": testDatabaseURL, "IDEMPOTENCY_TTL": "-1h"}, "IDEMPOTENCY_TTL"},
+		{"zero IDEMPOTENCY_CLEANUP_INTERVAL", map[string]string{"DATABASE_URL": testDatabaseURL, "IDEMPOTENCY_CLEANUP_INTERVAL": "0s"}, "IDEMPOTENCY_CLEANUP_INTERVAL"},
+		{"unparsable IDEMPOTENCY_CLEANUP_INTERVAL", map[string]string{"DATABASE_URL": testDatabaseURL, "IDEMPOTENCY_CLEANUP_INTERVAL": "hourly"}, "IDEMPOTENCY_CLEANUP_INTERVAL"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
