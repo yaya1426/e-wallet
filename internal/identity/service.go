@@ -168,9 +168,10 @@ func (s *Service) GetUser(ctx context.Context, userID uuid.UUID) (User, error) {
 	return toUser(row), nil
 }
 
-// GetUserByPhone returns the user with the given E.164 phone.
-func (s *Service) GetUserByPhone(ctx context.Context, phone string) (User, error) {
-	row, err := queries(s.db.Pool()).GetUserByPhone(ctx, phone)
+// GetUserByPhone returns the user with the given E.164 phone. q is a pgx.Tx (e.g. inside a
+// transfer's unit of work, so it does not need a second pool connection) or the pool.
+func (s *Service) GetUserByPhone(ctx context.Context, q Querier, phone string) (User, error) {
+	row, err := queries(q).GetUserByPhone(ctx, phone)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrUserNotFound // the phone is personal data; keep it out of error text
 	}

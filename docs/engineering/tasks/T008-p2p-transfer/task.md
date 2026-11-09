@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T008 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T008-p2p-transfer` |
 | Depends on   | T006, T007 |
@@ -100,16 +100,16 @@ One `InTx` (TDR-010; `fn` has no side effects outside the tx):
 Reversal / cancel (P2P-BR-3), recipient preview (T009), history (T010), notifications.
 
 ## Acceptance Criteria
-- [ ] AC-1 — Given A (balance 20 000) sends 5 000 to B, then `201` with the body above; A = 15 000, B += 5 000; one `P2P` journal entry with 2 postings; one transaction `P2P COMPLETED` shared by both.
-- [ ] AC-2 — Each row of the error table returns its status + code; nothing is posted and no transaction row is created for any of them.
-- [ ] AC-3 — Recipient wallet `FROZEN` → transfer succeeds. Sender `FROZEN` → `403 WALLET_FROZEN`.
-- [ ] AC-4 — Same key + same body twice → second response equals the first + `Idempotent-Replayed: true`, one transfer. Same key + different amount → `422 IDEMPOTENCY_KEY_REUSED`. A stored `INSUFFICIENT_FUNDS` is replayed even after the sender has been funded.
-- [ ] AC-5 — 20 parallel transfers of 1 000 from a wallet with 10 000 (different keys) → exactly 10 succeed, 10 get `INSUFFICIENT_FUNDS`, final balance 0, never negative (PRD-004 AC-3).
-- [ ] AC-6 — A→B and B→A, 50 each, concurrently, with the default DB settings → every request succeeds (no 5xx and no `503`; ordered locks prevent deadlocks), and the final balances are correct (PRD-004 AC-2).
-- [ ] AC-7 — The daily limit counts today's (Cairo) completed P2P + withdrawals PENDING/PROCESSING/COMPLETED; yesterday's do not count (fake clock across 22:00Z).
-- [ ] AC-8 — `MaskName`: `"Ahmed Mohamed Ali"→"Ahmed M. A."`, `"Mona"→"Mona"`, `"  sara   ali "→"sara a."`, Arabic `"أحمد محمد"→"أحمد م."`.
-- [ ] AC-9 — Invalid limit config (≤ 0, min > max, non-number) → `wallet serve` exits 1 naming the variable.
-- [ ] AC-10 — `ledgertest.AssertIntegrity` passes after every scenario (PRD-004 AC-5).
+- [x] AC-1 — Given A (balance 20 000) sends 5 000 to B, then `201` with the body above; A = 15 000, B += 5 000; one `P2P` journal entry with 2 postings; one transaction `P2P COMPLETED` shared by both.
+- [x] AC-2 — Each row of the error table returns its status + code; nothing is posted and no transaction row is created for any of them.
+- [x] AC-3 — Recipient wallet `FROZEN` → transfer succeeds. Sender `FROZEN` → `403 WALLET_FROZEN`.
+- [x] AC-4 — Same key + same body twice → second response equals the first + `Idempotent-Replayed: true`, one transfer. Same key + different amount → `422 IDEMPOTENCY_KEY_REUSED`. A stored `INSUFFICIENT_FUNDS` is replayed even after the sender has been funded.
+- [x] AC-5 — 20 parallel transfers of 1 000 from a wallet with 10 000 (different keys) → exactly 10 succeed, 10 get `INSUFFICIENT_FUNDS`, final balance 0, never negative (PRD-004 AC-3).
+- [x] AC-6 — A→B and B→A, 50 each, concurrently, with the default DB settings → every request succeeds (no 5xx and no `503`; ordered locks prevent deadlocks), and the final balances are correct (PRD-004 AC-2).
+- [x] AC-7 — The daily limit counts today's (Cairo) completed P2P + withdrawals PENDING/PROCESSING/COMPLETED; yesterday's do not count (fake clock across 22:00Z).
+- [x] AC-8 — `MaskName`: `"Ahmed Mohamed Ali"→"Ahmed M. A."`, `"Mona"→"Mona"`, `"  sara   ali "→"sara a."`, Arabic `"أحمد محمد"→"أحمد م."`.
+- [x] AC-9 — Invalid limit config (≤ 0, min > max, non-number) → `wallet serve` exits 1 naming the variable.
+- [x] AC-10 — `ledgertest.AssertIntegrity` passes after every scenario (PRD-004 AC-5).
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -138,3 +138,8 @@ Reversal / cancel (P2P-BR-3), recipient preview (T009), history (T010), notifica
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-05 | Ready | Planned with the phase-1 roadmap; all questions answered |
+| 2026-11-09 | In Progress | implement-task started, stacked on T007 |
+| 2026-11-09 | In Review | Implemented and verified: make ci ok, 352 tests, live HTTP + integrity ok |
+| 2026-11-09 | Changes Requested | Review round 1: 1 Major (503 row untested), 4 Minor, 1 Nit |
+| 2026-11-09 | Approved | Review round 2: fixed (#3 accepted as deviation); make ci ok, 359 tests |
+| 2026-11-09 | Done | Finalized — PR opened with GitHub auto-merge |

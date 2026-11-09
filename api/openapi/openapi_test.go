@@ -12,8 +12,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/yaya1426/e-wallet/internal/idempotency"
 	"github.com/yaya1426/e-wallet/internal/identity"
 	"github.com/yaya1426/e-wallet/internal/platform/httpserver"
+	"github.com/yaya1426/e-wallet/internal/transfer"
+	"github.com/yaya1426/e-wallet/internal/wallet"
 )
 
 const specFile = "wallet.yaml"
@@ -50,6 +53,7 @@ func TestSpec_DescribesTheEndpoints(t *testing.T) {
 		{"/v1/me/wallet", "get"},
 		{"/v1/me/bank-account", "put"},
 		{"/v1/me/bank-account", "get"},
+		{"/v1/transfers", "post"},
 	}
 	for _, tt := range tests {
 		item, ok := paths.Get(tt.path)
@@ -68,6 +72,10 @@ func TestSpec_CataloguesEveryErrorCode(t *testing.T) {
 		identity.CodePhoneAlreadyRegistered, identity.CodeInvalidCredentials,
 		identity.CodeUserDisabled, identity.CodeTooManyRequests, identity.CodeUnauthenticated,
 		identity.CodeInvalidIBAN, identity.CodeInvalidHolderName, identity.CodeBankAccountNotFound,
+		idempotency.CodeKeyRequired, idempotency.CodeKeyInvalid, idempotency.CodeKeyReused, idempotency.CodeRequestInProgress,
+		wallet.CodeInvalidAmount, wallet.CodeUnsupportedCurrency, wallet.CodeAmountOutOfRange, wallet.CodeWalletFrozen,
+		wallet.CodeInsufficientFunds, wallet.CodeDailyLimitExceeded, wallet.CodeRecipientLimitExceeded,
+		transfer.CodeInvalidNote, transfer.CodeRecipientNotFound, transfer.CodeSelfTransferNotAllowed,
 	}
 	for _, code := range codes {
 		assert.True(t, strings.Contains(string(raw), "`"+code+"`"), "error code %s is missing from %s", code, specFile)

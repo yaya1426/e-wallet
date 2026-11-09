@@ -78,6 +78,9 @@ var (
 	ErrUnauthenticated = errors.New("identity: unauthenticated")
 )
 
+// ValidPhone reports whether phone is an Egyptian mobile number in E.164 (T004 rule).
+func ValidPhone(phone string) bool { return egyptianMobile.MatchString(phone) }
+
 // validate checks the input in the order of the API contract: phone, password, name. It
 // returns the input with the name trimmed.
 func (in RegisterInput) validate() (RegisterInput, error) {

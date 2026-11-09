@@ -29,6 +29,11 @@ func TestConfig_LoadWallet_Defaults(t *testing.T) {
 		IdempotencyTTL:             24 * time.Hour,
 		IdempotencyCleanupInterval: time.Hour,
 
+		LimitTopUpMin: 1000, LimitTopUpMax: 3_000_000,
+		LimitWithdrawalMin: 1000, LimitWithdrawalMax: 3_000_000,
+		LimitP2PMin: 100, LimitP2PMax: 3_000_000,
+		LimitMaxBalance: 10_000_000, LimitDailyOutgoing: 6_000_000,
+
 		JWTTTL: 15 * time.Minute,
 	}, cfg)
 }
@@ -75,6 +80,11 @@ func TestConfig_LoadWallet_InvalidValuesNameTheVariable(t *testing.T) {
 		{"unparsable DB_STATEMENT_TIMEOUT", map[string]string{"DATABASE_URL": testDatabaseURL, "DB_STATEMENT_TIMEOUT": "5"}, "DB_STATEMENT_TIMEOUT"},
 		{"negative DB_TX_MAX_RETRIES", map[string]string{"DATABASE_URL": testDatabaseURL, "DB_TX_MAX_RETRIES": "-1"}, "DB_TX_MAX_RETRIES"},
 		{"non-number DB_TX_MAX_RETRIES", map[string]string{"DATABASE_URL": testDatabaseURL, "DB_TX_MAX_RETRIES": "three"}, "DB_TX_MAX_RETRIES"},
+		{"zero LIMIT_P2P_MIN", map[string]string{"DATABASE_URL": testDatabaseURL, "LIMIT_P2P_MIN": "0"}, "LIMIT_P2P_MIN"},
+		{"negative LIMIT_MAX_BALANCE", map[string]string{"DATABASE_URL": testDatabaseURL, "LIMIT_MAX_BALANCE": "-1"}, "LIMIT_MAX_BALANCE"},
+		{"non-number LIMIT_DAILY_OUTGOING", map[string]string{"DATABASE_URL": testDatabaseURL, "LIMIT_DAILY_OUTGOING": "lots"}, "LIMIT_DAILY_OUTGOING"},
+		{"decimal LIMIT_TOPUP_MAX", map[string]string{"DATABASE_URL": testDatabaseURL, "LIMIT_TOPUP_MAX": "30000.50"}, "LIMIT_TOPUP_MAX"},
+		{"min above max", map[string]string{"DATABASE_URL": testDatabaseURL, "LIMIT_WITHDRAWAL_MIN": "5000", "LIMIT_WITHDRAWAL_MAX": "4000"}, "LIMIT_WITHDRAWAL_MIN"},
 		{"zero IDEMPOTENCY_TTL", map[string]string{"DATABASE_URL": testDatabaseURL, "IDEMPOTENCY_TTL": "0s"}, "IDEMPOTENCY_TTL"},
 		{"negative IDEMPOTENCY_TTL", map[string]string{"DATABASE_URL": testDatabaseURL, "IDEMPOTENCY_TTL": "-1h"}, "IDEMPOTENCY_TTL"},
 		{"zero IDEMPOTENCY_CLEANUP_INTERVAL", map[string]string{"DATABASE_URL": testDatabaseURL, "IDEMPOTENCY_CLEANUP_INTERVAL": "0s"}, "IDEMPOTENCY_CLEANUP_INTERVAL"},

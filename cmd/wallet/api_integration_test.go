@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,29 +33,118 @@ import (
 )
 
 type apiFixture struct {
-	db     *database.DB
-	server *httptest.Server
+	db      *database.DB
+	server  *httptest.Server
+	clock   clock.Clock
+	ledger  *ledger.Service
+	txns    *transaction.Service
+	retries *txRetries
 }
 
-// newAPIFixture serves the real wiring (newAPI + newHandler) against a migrated database.
+// txRetries is a database.TxObserver that counts InTx retries by reason, so tests can prove
+// that no deadlock happened (InTx would otherwise retry it silently).
+type txRetries struct {
+	mu       sync.Mutex
+	byReason map[string]int
+}
+
+func (r *txRetries) ObserveTxRetry(reason string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.byReason[reason]++
+}
+
+func (r *txRetries) ObserveTxTryAgain() {}
+
+func (r *txRetries) count(reason string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.byReason[reason]
+}
+
+// newAPIFixture serves the real wiring (newAPI + newHandler) against a migrated database,
+// with the default configuration (limits included) and the system clock.
 func newAPIFixture(t *testing.T) apiFixture {
+	t.Helper()
+	return newAPIFixtureWith(t, clock.System{}, nil)
+}
+
+// newAPIFixtureWith is newAPIFixture with a given clock and extra environment variables
+// (e.g. LIMIT_* overrides).
+func newAPIFixtureWith(t *testing.T, clk clock.Clock, extraEnv map[string]string) apiFixture {
 	t.Helper()
 	ctx := context.Background()
 	url := databasetest.Shared(t).NewDatabase(t)
 	code, _, stderr := runCLI(t, map[string]string{"DATABASE_URL": url}, "migrate", "up")
 	require.Equal(t, exitOK, code, stderr)
-	db, err := database.Open(ctx, url, database.Options{Tx: database.DefaultTxSettings()})
+	retries := &txRetries{byReason: map[string]int{}}
+	db, err := database.Open(ctx, url, database.Options{Tx: database.DefaultTxSettings(), Observer: retries})
 	require.NoError(t, err)
 	t.Cleanup(db.Close)
 	t.Cleanup(func() { ledgertest.AssertIntegrity(t, db) })
 
+	environ := map[string]string{"DATABASE_URL": url, "JWT_SECRET": "integration-secret-at-least-32-bytes-long"}
+	for k, v := range extraEnv {
+		environ[k] = v
+	}
+	cfg, err := config.LoadWallet(environ)
+	require.NoError(t, err)
+	require.NoError(t, cfg.ValidateServe())
+
 	log := logger.New(io.Discard, slog.LevelInfo)
-	cfg := config.Wallet{JWTSecret: "integration-secret-at-least-32-bytes-long", JWTTTL: 15 * time.Minute}
-	a, err := newAPI(db, cfg, clock.System{}, log, bcrypt.MinCost)
+	a, err := newAPI(db, cfg, clk, log, bcrypt.MinCost)
 	require.NoError(t, err)
 	srv := httptest.NewServer(newHandler(log, metrics.New(), nil, a.routes))
 	t.Cleanup(srv.Close)
-	return apiFixture{db: db, server: srv}
+	return apiFixture{db: db, server: srv, clock: clk, ledger: ledger.NewService(db, clk), txns: transaction.NewService(clk), retries: retries}
+}
+
+// fund credits the wallet as a completed top-up would: a TOPUP transaction moved to
+// COMPLETED and its TOPUP_SETTLE entry (Dr BANK_SETTLEMENT / Cr user).
+func (f apiFixture) fund(t *testing.T, userID, walletID string, amountMinor int64) {
+	t.Helper()
+	ctx := context.Background()
+	bank, err := f.ledger.GetAccountByCode(ctx, f.db.Pool(), ledger.CodeBankSettlement)
+	require.NoError(t, err)
+	user, err := f.ledger.GetAccountByCode(ctx, f.db.Pool(), "USER_WALLET:"+walletID)
+	require.NoError(t, err)
+	amount, err := money.NewPositive(amountMinor, money.EGP)
+	require.NoError(t, err)
+	require.NoError(t, f.db.InTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		txn, err := f.txns.Create(ctx, tx, transaction.New{
+			Type: transaction.TypeTopUp, Status: transaction.StatusPending,
+			InitiatorUserID: uuid.MustParse(userID), DestinationWalletID: uuid.MustParse(walletID),
+			Amount: amount, IdempotencyKey: "fund-" + uuid.NewString(),
+		})
+		if err != nil {
+			return err
+		}
+		for _, step := range [][2]transaction.Status{
+			{transaction.StatusPending, transaction.StatusProcessing},
+			{transaction.StatusProcessing, transaction.StatusCompleted},
+		} {
+			if _, err := f.txns.Transition(ctx, tx, txn.ID, step[0], step[1], transaction.Patch{}); err != nil {
+				return err
+			}
+		}
+		_, err = f.ledger.Post(ctx, tx, ledger.Entry{
+			TransactionID: txn.ID,
+			Type:          ledger.EntryTopUpSettle,
+			Postings: []ledger.Posting{
+				{AccountID: bank.ID, Direction: ledger.Debit, Amount: amount},
+				{AccountID: user.ID, Direction: ledger.Credit, Amount: amount},
+			},
+		})
+		return err
+	}))
+}
+
+// balance reads the wallet's available balance through the API.
+func (f apiFixture) balance(t *testing.T, token string) int64 {
+	t.Helper()
+	r := f.call(t, http.MethodGet, "/v1/me/wallet", token, "")
+	require.Equal(t, http.StatusOK, r.status, r.body)
+	return int64(r.body["available_balance_minor"].(float64))
 }
 
 type httpResult struct {

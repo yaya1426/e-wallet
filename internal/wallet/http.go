@@ -9,6 +9,19 @@ import (
 	"github.com/yaya1426/e-wallet/internal/platform/httpserver"
 )
 
+// Error codes shared by the money flows (P2P, top-up, withdrawal), catalogued in
+// api/openapi/wallet.yaml.
+const (
+	CodeInvalidAmount          = "INVALID_AMOUNT"
+	CodeUnsupportedCurrency    = "UNSUPPORTED_CURRENCY"
+	CodeAmountOutOfRange       = "AMOUNT_OUT_OF_RANGE"
+	CodeWalletFrozen           = "WALLET_FROZEN"
+	CodeInsufficientFunds      = "INSUFFICIENT_FUNDS"
+	CodeDailyLimitExceeded     = "DAILY_LIMIT_EXCEEDED"
+	CodeRecipientLimitExceeded = "RECIPIENT_LIMIT_EXCEEDED"
+	CodeWalletLimitExceeded    = "WALLET_LIMIT_EXCEEDED"
+)
+
 // Handler serves the wallet endpoints.
 type Handler struct {
 	svc *Service
