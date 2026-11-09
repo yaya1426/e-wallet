@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T011 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T011-generic-db-queue` |
 | Depends on   | T002 |
@@ -86,14 +86,14 @@ None.
 The tables and real stores (T012/T015), `LISTEN/NOTIFY`, ordering guarantees, priorities.
 
 ## Acceptance Criteria
-- [ ] AC-1 — Given 10 due jobs and 3 workers, then all 10 handled once and `MarkDone` called 10 times; never more than 3 handlers run at once.
-- [ ] AC-2 — Given a handler returning `Retry`, then `MarkRetry` with `next = now + backoff`, `0 ≤ backoff < min(5m, 1s·2^attempts)`. Once attempts reach `MaxAttempts` → `MarkDead`.
-- [ ] AC-3 — `Fail(reason)` → `MarkFailed(reason)`. A panic → treated as retry, the runner keeps working.
-- [ ] AC-4 — A handler longer than `HandlerTimeout` sees its ctx canceled.
-- [ ] AC-5 — `Wake()` makes the dispatcher claim before the next poll tick; many `Wake()` calls never block.
-- [ ] AC-6 — Ctx canceled while 2 handlers are running → they finish, no new claims happen, `Run` returns nil.
-- [ ] AC-7 — `Backoff` table: attempt 1 < 2s, attempt 10 < 5 min cap, never negative.
-- [ ] AC-8 — Invalid config → `NewRunner` error. Metrics counters increase per result.
+- [x] AC-1 — Given 10 due jobs and 3 workers, then all 10 handled once and `MarkDone` called 10 times; never more than 3 handlers run at once.
+- [x] AC-2 — Given a handler returning `Retry`, then `MarkRetry` with `next = now + backoff`, `0 ≤ backoff < min(5m, 1s·2^attempts)`. Once attempts reach `MaxAttempts` → `MarkDead`.
+- [x] AC-3 — `Fail(reason)` → `MarkFailed(reason)`. A panic → treated as retry, the runner keeps working.
+- [x] AC-4 — A handler longer than `HandlerTimeout` sees its ctx canceled.
+- [x] AC-5 — `Wake()` makes the dispatcher claim before the next poll tick; many `Wake()` calls never block.
+- [x] AC-6 — Ctx canceled while 2 handlers are running → they finish, no new claims happen, `Run` returns nil.
+- [x] AC-7 — `Backoff` table: attempt 1 < 2s, attempt 10 < 5 min cap, never negative.
+- [x] AC-8 — Invalid config → `NewRunner` error. Metrics counters increase per result.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -122,3 +122,8 @@ The real `SKIP LOCKED` / lease behaviour is tested against Postgres by the owner
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-05 | Ready | Planned with the phase-1 roadmap; all questions answered |
+| 2026-11-09 | In Progress | implement-task started, stacked on T010 (local) and T009 (PR #11) |
+| 2026-11-09 | In Review | Implemented and verified: make ci ok, 384 tests, queue coverage 95%, 20× -race stable |
+| 2026-11-09 | Approved | Review round 1: Approved (1 Nit) |
+| 2026-11-09 | Approved | Review round 2: stale-mark guard (Job passed to Mark*) fixed and tested |
+| 2026-11-09 | Done | Finalized — PR opened with GitHub auto-merge |

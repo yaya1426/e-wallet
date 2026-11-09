@@ -39,3 +39,18 @@ func TestMetrics_TxRetries(t *testing.T) {
 	assert.Contains(t, body, `db_tx_retries_total{reason="lock_timeout"} 1`)
 	assert.Contains(t, body, "db_tx_try_again_total 1")
 }
+
+func TestMetrics_Queue(t *testing.T) {
+	m := New()
+	m.ObserveQueueClaimed("outbox", 3)
+	m.ObserveQueueJob("outbox", "done", 10*time.Millisecond)
+	m.ObserveQueueJob("outbox", "retry", time.Millisecond)
+
+	rec := httptest.NewRecorder()
+	m.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := rec.Body.String()
+	assert.Contains(t, body, `queue_claimed_total{queue="outbox"} 3`)
+	assert.Contains(t, body, `queue_jobs_total{queue="outbox",result="done"} 1`)
+	assert.Contains(t, body, `queue_jobs_total{queue="outbox",result="retry"} 1`)
+	assert.Contains(t, body, `queue_handler_duration_seconds_count{queue="outbox"} 2`)
+}
