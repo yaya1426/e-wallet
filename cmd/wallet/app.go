@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/yaya1426/e-wallet/internal/bank"
+	"github.com/yaya1426/e-wallet/internal/bank/banksim"
 	"github.com/yaya1426/e-wallet/internal/discrepancy"
 	"github.com/yaya1426/e-wallet/internal/idempotency"
 	"github.com/yaya1426/e-wallet/internal/identity"
@@ -54,7 +56,12 @@ func serve(ctx context.Context, environ map[string]string, stdout, stderr io.Wri
 	}
 	defer db.Close()
 
-	api, err := newAPI(db, cfg, clock.System{}, log, m, 0)
+	gateway, err := banksim.New(banksim.Config{BaseURL: cfg.BankBaseURL, Timeout: cfg.BankHTTPTimeout}, log, m)
+	if err != nil {
+		log.Error("startup failed", slog.Any("error", err))
+		return exitError
+	}
+	api, err := newAPI(db, cfg, clock.System{}, log, m, 0, gateway)
 	if err != nil {
 		log.Error("startup failed", slog.Any("error", err))
 		return exitError
@@ -193,6 +200,7 @@ type api struct {
 	identity    *identity.Handler
 	wallet      *wallet.Handler
 	transfer    *transfer.Handler
+	payment     *payment.Handler
 	history     *transaction.Handler
 	idempotency *idempotency.Service // used by the money endpoints and the cleanup job
 	outbox      *outbox.Service      // delivered by serve when OUTBOX_ENABLED
@@ -207,8 +215,11 @@ type observer interface {
 }
 
 // newAPI wires the modules. obs (the metrics) may be nil. bcryptCost 0 means
-// identity.DefaultBcryptCost (tests pass a lower cost to stay fast).
-func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logger, obs observer, bcryptCost int) (*api, error) {
+// identity.DefaultBcryptCost (tests pass a lower cost to stay fast). gateway is the bank (the
+// banksim client in serve, a fake in tests).
+func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logger, obs observer, bcryptCost int,
+	gateway bank.Gateway,
+) (*api, error) {
 	ledgerSvc := ledger.NewService(db, clk)
 	walletSvc := wallet.NewService(db, ledgerSvc, clk)
 	identitySvc, err := identity.NewService(db, walletSvc, clk, identity.Config{
@@ -226,7 +237,14 @@ func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logge
 		return nil, err
 	}
 	discrepancySvc := discrepancy.NewService(db.Pool(), clk, log)
-	paymentSvc := payment.NewService(walletSvc, transactionSvc, ledgerSvc, discrepancySvc, clk, log)
+	paymentSvc := payment.NewService(payment.Deps{
+		DB: db, Identity: identitySvc, Wallets: walletSvc, Transactions: transactionSvc, Ledger: ledgerSvc,
+		Discrepancies: discrepancySvc, Idempotency: idempotencySvc, Outbox: outboxSvc, Bank: gateway,
+		Limits: limits(cfg), Clock: clk, Log: log,
+	})
+	for eventType, h := range paymentSvc.OutboxHandlers() {
+		outboxSvc.Register(eventType, h)
+	}
 	inboxSvc, err := webhook.NewService(db.Pool(), db, discrepancySvc, clk, webhook.Config{
 		Workers: cfg.InboxWorkers, MaxAttempts: cfg.InboxMaxAttempts, PollInterval: cfg.QueuePollInterval,
 	}, log, obs)
@@ -239,6 +257,7 @@ func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logge
 		identity: identity.NewHandler(identitySvc, identity.NewLoginLimiter(clk), log),
 		wallet:   wallet.NewHandler(walletSvc, log),
 		transfer: transfer.NewHandler(transferSvc, log),
+		payment:  payment.NewHandler(paymentSvc, log),
 		history: transaction.NewHandler(transactionSvc, db.Pool(),
 			walletOfUser{db: db, wallets: walletSvc}, parties{db: db, wallets: walletSvc, identity: identitySvc}, log),
 		idempotency: idempotencySvc,
@@ -263,6 +282,7 @@ func (a *api) routes(mux *http.ServeMux) {
 	a.identity.Routes(mux)
 	a.wallet.Routes(mux, a.identity.RequireAuth)
 	a.transfer.Routes(mux, a.identity.RequireAuth)
+	a.payment.Routes(mux, a.identity.RequireAuth)
 	a.history.Routes(mux, a.identity.RequireAuth)
 	a.webhook.Routes(mux) // authenticated by its signature, not a user token
 }

@@ -62,7 +62,9 @@ func setup(t *testing.T) fixture {
 	f := fixture{db: db, clock: clk, ledger: ledger.NewService(db, clk), txns: transaction.NewService(clk)}
 	f.wallets = wallet.NewService(db, f.ledger, clk)
 	f.discrepancies = discrepancy.NewService(db.Pool(), clk, nil)
-	f.payment = payment.NewService(f.wallets, f.txns, f.ledger, f.discrepancies, clk, nil)
+	f.payment = payment.NewService(payment.Deps{
+		DB: db, Wallets: f.wallets, Transactions: f.txns, Ledger: f.ledger, Discrepancies: f.discrepancies, Clock: clk,
+	})
 
 	// A user row is enough (identity is not under test).
 	f.user = uuid.New()

@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/yaya1426/e-wallet/internal/bank/banktest"
 	"github.com/yaya1426/e-wallet/internal/ledger"
 	"github.com/yaya1426/e-wallet/internal/ledger/ledgertest"
 	"github.com/yaya1426/e-wallet/internal/platform/clock"
@@ -33,6 +34,8 @@ import (
 )
 
 type apiFixture struct {
+	api     *api
+	bank    *banktest.Fake // the bank the outbox handlers call (run f.api.outbox to deliver)
 	db      *database.DB
 	server  *httptest.Server
 	clock   clock.Clock
@@ -93,11 +96,12 @@ func newAPIFixtureWith(t *testing.T, clk clock.Clock, extraEnv map[string]string
 	require.NoError(t, cfg.ValidateServe())
 
 	log := logger.New(io.Discard, slog.LevelInfo)
-	a, err := newAPI(db, cfg, clk, log, nil, bcrypt.MinCost)
+	gateway := banktest.New()
+	a, err := newAPI(db, cfg, clk, log, nil, bcrypt.MinCost, gateway)
 	require.NoError(t, err)
 	srv := httptest.NewServer(newHandler(log, metrics.New(), nil, a.routes))
 	t.Cleanup(srv.Close)
-	return apiFixture{db: db, server: srv, clock: clk, ledger: ledger.NewService(db, clk), txns: transaction.NewService(clk), retries: retries}
+	return apiFixture{api: a, bank: gateway, db: db, server: srv, clock: clk, ledger: ledger.NewService(db, clk), txns: transaction.NewService(clk), retries: retries}
 }
 
 // fund credits the wallet as a completed top-up would: a TOPUP transaction moved to

@@ -122,9 +122,11 @@ func (s *Service) ApplyBankOutcome(ctx context.Context, tx pgx.Tx, txnID uuid.UU
 		})
 	}
 	if txn.Status == transaction.StatusPending {
-		ref := outcome.BankReference
-		if txn, err = s.transactions.Transition(ctx, tx, txn.ID, transaction.StatusPending, transaction.StatusProcessing,
-			transaction.Patch{BankReference: &ref}); err != nil {
+		var patch transaction.Patch
+		if ref := outcome.BankReference; ref != "" { // never store an empty reference
+			patch.BankReference = &ref
+		}
+		if txn, err = s.transactions.Transition(ctx, tx, txn.ID, transaction.StatusPending, transaction.StatusProcessing, patch); err != nil {
 			return err
 		}
 	}
