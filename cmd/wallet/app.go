@@ -14,6 +14,7 @@ import (
 	"github.com/yaya1426/e-wallet/internal/idempotency"
 	"github.com/yaya1426/e-wallet/internal/identity"
 	"github.com/yaya1426/e-wallet/internal/ledger"
+	"github.com/yaya1426/e-wallet/internal/outbox"
 	"github.com/yaya1426/e-wallet/internal/platform/clock"
 	"github.com/yaya1426/e-wallet/internal/platform/config"
 	"github.com/yaya1426/e-wallet/internal/platform/database"
@@ -50,7 +51,7 @@ func serve(ctx context.Context, environ map[string]string, stdout, stderr io.Wri
 	}
 	defer db.Close()
 
-	api, err := newAPI(db, cfg, clock.System{}, log, 0)
+	api, err := newAPI(db, cfg, clock.System{}, log, m, 0)
 	if err != nil {
 		log.Error("startup failed", slog.Any("error", err))
 		return exitError
@@ -62,6 +63,13 @@ func serve(ctx context.Context, environ map[string]string, stdout, stderr io.Wri
 	g.Go(func() error {
 		return idempotency.NewCleanup(api.idempotency, db.Pool(), cfg.IdempotencyCleanupInterval, log).Run(gctx)
 	})
+	if cfg.OutboxEnabled {
+		g.Go(func() error { return api.outbox.Run(gctx) })
+		log.Info("outbox delivery started", slog.Int("workers", cfg.OutboxWorkers))
+	} else {
+		// An API-only instance: it still enqueues events, other instances deliver them.
+		log.Info("outbox delivery disabled", slog.String("reason", "OUTBOX_ENABLED=false"))
+	}
 	if err := g.Wait(); err != nil {
 		log.Error("wallet stopped with error", slog.Any("error", err))
 		return exitError
@@ -173,11 +181,12 @@ type api struct {
 	transfer    *transfer.Handler
 	history     *transaction.Handler
 	idempotency *idempotency.Service // used by the money endpoints and the cleanup job
+	outbox      *outbox.Service      // delivered by serve when OUTBOX_ENABLED
 }
 
-// newAPI wires the modules. bcryptCost 0 means identity.DefaultBcryptCost (tests pass a
-// lower cost to stay fast).
-func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logger, bcryptCost int) (*api, error) {
+// newAPI wires the modules. obs (the metrics) may be nil. bcryptCost 0 means
+// identity.DefaultBcryptCost (tests pass a lower cost to stay fast).
+func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logger, obs outbox.Observer, bcryptCost int) (*api, error) {
 	ledgerSvc := ledger.NewService(db, clk)
 	walletSvc := wallet.NewService(db, ledgerSvc, clk)
 	identitySvc, err := identity.NewService(db, walletSvc, clk, identity.Config{
@@ -188,6 +197,12 @@ func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logge
 	}
 	transactionSvc := transaction.NewService(clk)
 	idempotencySvc := idempotency.NewService(clk, cfg.IdempotencyTTL)
+	outboxSvc, err := outbox.NewService(db.Pool(), clk, outbox.Config{
+		Workers: cfg.OutboxWorkers, MaxAttempts: cfg.OutboxMaxAttempts, PollInterval: cfg.QueuePollInterval,
+	}, log, obs)
+	if err != nil {
+		return nil, err
+	}
 	transferSvc := transfer.NewService(db, identitySvc, walletSvc, ledgerSvc, transactionSvc, idempotencySvc, limits(cfg), clk)
 	return &api{
 		identity: identity.NewHandler(identitySvc, identity.NewLoginLimiter(clk), log),
@@ -196,6 +211,7 @@ func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logge
 		history: transaction.NewHandler(transactionSvc, db.Pool(),
 			walletOfUser{db: db, wallets: walletSvc}, parties{db: db, wallets: walletSvc, identity: identitySvc}, log),
 		idempotency: idempotencySvc,
+		outbox:      outboxSvc,
 	}, nil
 }
 

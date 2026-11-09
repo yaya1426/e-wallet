@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T012 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T012-outbox-module` |
 | Depends on   | T011 |
@@ -73,15 +73,15 @@ None.
 The archive janitor and `outbox_events_archive` (phase 2), the real handlers (T017, T018).
 
 ## Acceptance Criteria
-- [ ] AC-1 — An event enqueued in a tx that rolls back is never delivered; one enqueued in a committed tx is delivered once to its handler with the same payload.
-- [ ] AC-2 — Two runners (two "instances") on the same DB with 100 events → each event handled exactly once by a `Done` handler (`SKIP LOCKED`).
-- [ ] AC-3 — A handler that crashes the "instance" (test cancels the runner mid-handler without marking) → after the lease expires (short lease in the test), another runner claims and handles it; attempts = 2.
-- [ ] AC-4 — `Retry` → back to `PENDING` with `next_attempt_at` in the future and `last_error` set; after `OUTBOX_MAX_ATTEMPTS` → `DEAD`, `outbox_dead_total` +1.
-- [ ] AC-5 — `Fail("INVALID_ACCOUNT")` → status `DONE`, `last_error = "INVALID_ACCOUNT"`.
-- [ ] AC-6 — `Wake()` after commit → delivered well before `QUEUE_POLL_INTERVAL` would have (test with a 10 s poll).
-- [ ] AC-7 — Enqueue of an unregistered type → `ErrUnknownEventType`.
-- [ ] AC-8 — `OUTBOX_ENABLED=false` → the runner does not start; config defaults/validation as listed.
-- [ ] AC-9 — Gauges reflect pending count and oldest age.
+- [x] AC-1 — An event enqueued in a tx that rolls back is never delivered; one enqueued in a committed tx is delivered once to its handler with the same payload.
+- [x] AC-2 — Two runners (two "instances") on the same DB with 100 events → each event handled exactly once by a `Done` handler (`SKIP LOCKED`).
+- [x] AC-3 — A handler that crashes the "instance" (test cancels the runner mid-handler without marking) → after the lease expires (short lease in the test), another runner claims and handles it; attempts = 2.
+- [x] AC-4 — `Retry` → back to `PENDING` with `next_attempt_at` in the future and `last_error` set; after `OUTBOX_MAX_ATTEMPTS` → `DEAD`, `outbox_dead_total` +1.
+- [x] AC-5 — `Fail("INVALID_ACCOUNT")` → status `DONE`, `last_error = "INVALID_ACCOUNT"`.
+- [x] AC-6 — `Wake()` after commit → delivered well before `QUEUE_POLL_INTERVAL` would have (test with a 10 s poll).
+- [x] AC-7 — Enqueue of an unregistered type → `ErrUnknownEventType`.
+- [x] AC-8 — `OUTBOX_ENABLED=false` → the runner does not start; config defaults/validation as listed.
+- [x] AC-9 — Gauges reflect pending count and oldest age.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -109,3 +109,7 @@ The archive janitor and `outbox_events_archive` (phase 2), the real handlers (T0
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-05 | Ready | Planned with the phase-1 roadmap; all questions answered |
+| 2026-11-09 | In Progress | Implementation started |
+| 2026-11-09 | In Review | Implemented and verified; see implementation.md |
+| 2026-11-09 | Approved | Review round 1: Approved (1 Minor accepted, 2 Nits) |
+| 2026-11-09 | Done | Finalized — PR opened with GitHub auto-merge |

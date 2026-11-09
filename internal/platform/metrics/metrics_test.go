@@ -54,3 +54,17 @@ func TestMetrics_Queue(t *testing.T) {
 	assert.Contains(t, body, `queue_jobs_total{queue="outbox",result="retry"} 1`)
 	assert.Contains(t, body, `queue_handler_duration_seconds_count{queue="outbox"} 2`)
 }
+
+func TestMetrics_Outbox(t *testing.T) {
+	m := New()
+	m.ObserveOutboxBacklog(7, 90*time.Second)
+	m.ObserveOutboxDead()
+	m.ObserveOutboxDead()
+
+	rec := httptest.NewRecorder()
+	m.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := rec.Body.String()
+	assert.Contains(t, body, "outbox_pending_total 7")
+	assert.Contains(t, body, "outbox_oldest_pending_age_seconds 90")
+	assert.Contains(t, body, "outbox_dead_total 2")
+}

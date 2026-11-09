@@ -29,6 +29,14 @@ type Wallet struct {
 	IdempotencyTTL             time.Duration `env:"IDEMPOTENCY_TTL"              envDefault:"24h"`
 	IdempotencyCleanupInterval time.Duration `env:"IDEMPOTENCY_CLEANUP_INTERVAL" envDefault:"1h"`
 
+	// Outbox delivery (TDR-006, T012). With OUTBOX_ENABLED=false this instance still
+	// enqueues events (an API-only replica) but does not deliver them. QUEUE_POLL_INTERVAL is
+	// shared by the outbox and the webhook inbox.
+	OutboxEnabled     bool          `env:"OUTBOX_ENABLED"      envDefault:"true"`
+	OutboxWorkers     int           `env:"OUTBOX_WORKERS"      envDefault:"8"`
+	OutboxMaxAttempts int           `env:"OUTBOX_MAX_ATTEMPTS" envDefault:"10"`
+	QueuePollInterval time.Duration `env:"QUEUE_POLL_INTERVAL" envDefault:"500ms"`
+
 	// Money limits in piasters (PRD-001 §5.6, T008); the wallet module applies them.
 	LimitTopUpMin      int64 `env:"LIMIT_TOPUP_MIN"       envDefault:"1000"`
 	LimitTopUpMax      int64 `env:"LIMIT_TOPUP_MAX"       envDefault:"3000000"`
@@ -102,6 +110,7 @@ func (cfg Wallet) validate() error {
 		{"DB_STATEMENT_TIMEOUT", cfg.DBStatementTimeout},
 		{"IDEMPOTENCY_TTL", cfg.IdempotencyTTL},
 		{"IDEMPOTENCY_CLEANUP_INTERVAL", cfg.IdempotencyCleanupInterval},
+		{"QUEUE_POLL_INTERVAL", cfg.QueuePollInterval},
 	}
 	for _, p := range positive {
 		if p.value <= 0 {
@@ -133,6 +142,15 @@ func (cfg Wallet) validate() error {
 	for _, r := range ranges {
 		if r.lo > r.hi {
 			errs = append(errs, fmt.Errorf("config: %s (%d) must not exceed %s (%d)", r.minName, r.lo, r.maxName, r.hi))
+		}
+	}
+	counts := []struct {
+		name  string
+		value int
+	}{{"OUTBOX_WORKERS", cfg.OutboxWorkers}, {"OUTBOX_MAX_ATTEMPTS", cfg.OutboxMaxAttempts}}
+	for _, c := range counts {
+		if c.value < 1 {
+			errs = append(errs, fmt.Errorf("config: %s must be at least 1, got %d", c.name, c.value))
 		}
 	}
 	if cfg.DBTxMaxRetries < 0 {

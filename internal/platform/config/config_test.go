@@ -29,6 +29,9 @@ func TestConfig_LoadWallet_Defaults(t *testing.T) {
 		IdempotencyTTL:             24 * time.Hour,
 		IdempotencyCleanupInterval: time.Hour,
 
+		OutboxEnabled: true, OutboxWorkers: 8, OutboxMaxAttempts: 10,
+		QueuePollInterval: 500 * time.Millisecond,
+
 		LimitTopUpMin: 1000, LimitTopUpMax: 3_000_000,
 		LimitWithdrawalMin: 1000, LimitWithdrawalMax: 3_000_000,
 		LimitP2PMin: 100, LimitP2PMax: 3_000_000,
@@ -95,6 +98,32 @@ func TestConfig_LoadWallet_InvalidValuesNameTheVariable(t *testing.T) {
 			_, err := LoadWallet(tt.environ)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantVar)
+		})
+	}
+}
+
+func TestConfig_Outbox(t *testing.T) {
+	cfg, err := LoadWallet(map[string]string{
+		"DATABASE_URL": testDatabaseURL, "OUTBOX_ENABLED": "false", "OUTBOX_WORKERS": "2",
+		"OUTBOX_MAX_ATTEMPTS": "1", "QUEUE_POLL_INTERVAL": "10s",
+	})
+	require.NoError(t, err)
+	assert.False(t, cfg.OutboxEnabled)
+	assert.Equal(t, 2, cfg.OutboxWorkers)
+	assert.Equal(t, 1, cfg.OutboxMaxAttempts)
+	assert.Equal(t, 10*time.Second, cfg.QueuePollInterval)
+
+	invalid := []struct{ name, value string }{
+		{"OUTBOX_ENABLED", "maybe"},
+		{"OUTBOX_WORKERS", "0"}, {"OUTBOX_WORKERS", "-1"}, {"OUTBOX_WORKERS", "many"},
+		{"OUTBOX_MAX_ATTEMPTS", "0"},
+		{"QUEUE_POLL_INTERVAL", "0s"}, {"QUEUE_POLL_INTERVAL", "-1s"}, {"QUEUE_POLL_INTERVAL", "500"},
+	}
+	for _, tt := range invalid {
+		t.Run(tt.name+"="+tt.value, func(t *testing.T) {
+			_, err := LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL, tt.name: tt.value})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.name)
 		})
 	}
 }
