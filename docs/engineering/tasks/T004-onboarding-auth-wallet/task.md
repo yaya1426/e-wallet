@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T004 |
-| Status       | Approved |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T004-onboarding-auth-wallet` |
 | Depends on   | T003 |
@@ -164,3 +164,4 @@ Refresh tokens, logout/revocation, OTP, password reset, operator auth (`/interna
 | 2026-11-06 | Changes Requested | Review round 1: 1 Blocker (login limiter), 5 Minor, 2 Nit |
 | 2026-11-06 | Approved | Review round 2: all fixed except #6 (register rate limit → user decision); make ci ok, 237 tests |
 | 2026-11-06 | Approved | PR opened without auto-merge: production needs a JWT_SECRET on DigitalOcean first (writing it was blocked for the agent; the user sets it), then the PR can merge |
+| 2026-11-09 | Done | JWT_SECRET added on DigitalOcean by the user (recommended: mark it Encrypted, scope Run time); auto-merge enabled on PR #6 |
