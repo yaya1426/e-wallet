@@ -48,6 +48,8 @@ services:
       # DEV ONLY: a public, well-known secret for local runs and CI. Production sets its own.
       JWT_SECRET: dev-only-jwt-secret-change-me-0123456789
       BANK_BASE_URL: http://banksim:9090
+      # DEV ONLY: the webhook HMAC secret shared with banksim (TDR-007). Production sets its own.
+      BANK_WEBHOOK_SECRET: dev-only-bank-webhook-secret-0123456789
     ports:
       - "8080:8080"
     depends_on:
@@ -64,6 +66,9 @@ services:
     environment:
       BANKSIM_HTTP_ADDR: ":9090"
       LOG_LEVEL: info
+      BANKSIM_WEBHOOK_URL: http://wallet:8080/webhooks/bank
+      BANKSIM_WEBHOOK_DELAY: 2s
+      BANK_WEBHOOK_SECRET: dev-only-bank-webhook-secret-0123456789
     ports:
       - "9090:9090"
 

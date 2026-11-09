@@ -11,7 +11,15 @@ info:
     Conventions: amounts are integer minor units (`amount_minor`, piasters for EGP) with an
     ISO 4217 `currency` (TDR-003 §5); `snake_case` JSON. Operations are idempotent by the
     `Idempotency-Key` header, which is the wallet transaction ID (TDR-005 layer 3): a repeated
-    key with the same body returns the original response and creates no new operation.
+    key with the same body returns the original response (202 or 422) and creates no new
+    operation; the same key with a different request (another body or the other kind) is
+    `422 IDEMPOTENCY_KEY_REUSED`.
+
+    Simulator behaviour (T014), chosen by the IBAN's last four digits: `0000` (and any other
+    suffix) settles as SUCCEEDED after `BANKSIM_WEBHOOK_DELAY`; `0001` settles as FAILED
+    (`INSUFFICIENT_FUNDS` for debits, `ACCOUNT_CLOSED` for payouts); `0002` is rejected at once
+    with `422 INVALID_ACCOUNT`. When an operation settles, the simulator POSTs a signed event
+    to the wallet webhook (TDR-007).
 
     How the wallet reads the answers: `408`, `429`, `5xx`, timeouts and unreadable bodies are
     temporary failures (retried); any other `4xx` is a business rejection (not retried).
@@ -24,6 +32,8 @@ servers:
 tags:
   - name: operations
     description: Debits, payouts and their status.
+  - name: admin
+    description: Test-only controls of the simulator.
 paths:
   /v1/debits:
     post:
@@ -41,6 +51,8 @@ paths:
       responses:
         '202':
           $ref: '#/components/responses/Accepted'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
         '422':
           $ref: '#/components/responses/Rejected'
   /v1/payouts:
@@ -59,6 +71,8 @@ paths:
       responses:
         '202':
           $ref: '#/components/responses/Accepted'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
         '422':
           $ref: '#/components/responses/Rejected'
   /v1/operations/{idempotency_key}:
@@ -81,12 +95,38 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Operation'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
         '404':
           description: '`NOT_FOUND`: no operation was created with this key.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /admin/scenarios:
+    post:
+      tags: [admin]
+      operationId: setScenario
+      summary: Use a scenario for the next debit or payout of an IBAN (once)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [iban, scenario]
+              properties:
+                iban:
+                  type: string
+                scenario:
+                  type: string
+                  enum: ['0000', '0001', '0002']
+      responses:
+        '204':
+          description: Set; it applies to the next request for this IBAN only.
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
 components:
   parameters:
     IdempotencyKey:
@@ -104,8 +144,16 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Acceptance'
+    InvalidRequest:
+      description: '`INVALID_REQUEST`: missing or malformed `Idempotency-Key`, body or field.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     Rejected:
-      description: The bank refused the operation for a business reason (e.g. `INVALID_ACCOUNT`).
+      description: |
+        `INVALID_ACCOUNT`: the bank refused the account (a business rejection).
+        `IDEMPOTENCY_KEY_REUSED`: the key was used with a different request.
       content:
         application/json:
           schema:

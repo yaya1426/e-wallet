@@ -74,10 +74,8 @@ func (cfg Wallet) ValidateServe() error {
 		// The login response reports expires_in in whole seconds.
 		errs = append(errs, fmt.Errorf("config: JWT_TTL must be whole seconds, got %s", cfg.JWTTTL))
 	}
-	if u, err := url.Parse(cfg.BankBaseURL); cfg.BankBaseURL == "" {
-		errs = append(errs, errors.New("config: BANK_BASE_URL is required"))
-	} else if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		errs = append(errs, fmt.Errorf("config: BANK_BASE_URL must be an absolute http(s) URL, got %q", cfg.BankBaseURL))
+	if err := checkHTTPURL("BANK_BASE_URL", cfg.BankBaseURL); err != nil {
+		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
 }
@@ -86,6 +84,40 @@ func (cfg Wallet) ValidateServe() error {
 type Banksim struct {
 	HTTPAddr string     `env:"BANKSIM_HTTP_ADDR" envDefault:":9090"`
 	LogLevel slog.Level `env:"-"`
+
+	// Webhook to the wallet (TDR-007, T014): where to send events, the shared HMAC secret,
+	// and how long an operation stays PENDING before it settles.
+	WebhookURL    string        `env:"BANKSIM_WEBHOOK_URL"`
+	WebhookSecret string        `env:"BANK_WEBHOOK_SECRET"`
+	WebhookDelay  time.Duration `env:"BANKSIM_WEBHOOK_DELAY" envDefault:"2s"`
+}
+
+// minWebhookSecretBytes is the shortest accepted webhook HMAC secret (T014).
+const minWebhookSecretBytes = 32
+
+func (cfg Banksim) validate() error {
+	var errs []error
+	if err := checkHTTPURL("BANKSIM_WEBHOOK_URL", cfg.WebhookURL); err != nil {
+		errs = append(errs, err)
+	}
+	if len(cfg.WebhookSecret) < minWebhookSecretBytes {
+		errs = append(errs, fmt.Errorf("config: BANK_WEBHOOK_SECRET must be at least %d bytes, got %d", minWebhookSecretBytes, len(cfg.WebhookSecret)))
+	}
+	if cfg.WebhookDelay < 0 {
+		errs = append(errs, fmt.Errorf("config: BANKSIM_WEBHOOK_DELAY must not be negative, got %s", cfg.WebhookDelay))
+	}
+	return errors.Join(errs...)
+}
+
+// checkHTTPURL requires an absolute http(s) URL.
+func checkHTTPURL(name, raw string) error {
+	if raw == "" {
+		return fmt.Errorf("config: %s is required", name)
+	}
+	if u, err := url.Parse(raw); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("config: %s must be an absolute http(s) URL, got %q", name, raw)
+	}
+	return nil
 }
 
 // logLevel is parsed separately so that only the documented level names are accepted.
@@ -175,6 +207,9 @@ func (cfg Wallet) validate() error {
 func LoadBanksim(environ map[string]string) (Banksim, error) {
 	var cfg Banksim
 	if err := parse(&cfg, environ); err != nil {
+		return Banksim{}, err
+	}
+	if err := cfg.validate(); err != nil {
 		return Banksim{}, err
 	}
 	level, err := loadLogLevel(environ)

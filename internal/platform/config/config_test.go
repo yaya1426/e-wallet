@@ -165,15 +165,52 @@ func TestConfig_Bank(t *testing.T) {
 	}
 }
 
+// banksimEnv is the smallest valid banksim environment.
+func banksimEnv(kv ...string) map[string]string {
+	env := map[string]string{"BANKSIM_WEBHOOK_URL": "http://wallet:8080/webhooks/bank", "BANK_WEBHOOK_SECRET": strings.Repeat("w", 32)}
+	for i := 0; i < len(kv); i += 2 {
+		env[kv[i]] = kv[i+1]
+	}
+	return env
+}
+
 func TestConfig_LoadBanksim_Defaults(t *testing.T) {
-	cfg, err := LoadBanksim(map[string]string{})
+	cfg, err := LoadBanksim(banksimEnv())
 	require.NoError(t, err)
 
-	assert.Equal(t, Banksim{HTTPAddr: ":9090", LogLevel: slog.LevelInfo}, cfg)
+	assert.Equal(t, Banksim{
+		HTTPAddr: ":9090", LogLevel: slog.LevelInfo,
+		WebhookURL: "http://wallet:8080/webhooks/bank", WebhookSecret: strings.Repeat("w", 32), WebhookDelay: 2 * time.Second,
+	}, cfg)
+}
+
+func TestConfig_Banksim(t *testing.T) {
+	cfg, err := LoadBanksim(banksimEnv("BANKSIM_WEBHOOK_DELAY", "0s"))
+	require.NoError(t, err)
+	assert.Equal(t, time.Duration(0), cfg.WebhookDelay, "0 settles at once")
+
+	tests := []struct {
+		name    string
+		environ map[string]string
+		wantVar string
+	}{
+		{"no webhook URL", map[string]string{"BANK_WEBHOOK_SECRET": strings.Repeat("w", 32)}, "BANKSIM_WEBHOOK_URL"},
+		{"relative webhook URL", banksimEnv("BANKSIM_WEBHOOK_URL", "/webhooks/bank"), "BANKSIM_WEBHOOK_URL"},
+		{"no secret", map[string]string{"BANKSIM_WEBHOOK_URL": "http://w/x"}, "BANK_WEBHOOK_SECRET"},
+		{"31-byte secret", banksimEnv("BANK_WEBHOOK_SECRET", strings.Repeat("w", 31)), "BANK_WEBHOOK_SECRET"},
+		{"negative delay", banksimEnv("BANKSIM_WEBHOOK_DELAY", "-1s"), "BANKSIM_WEBHOOK_DELAY"},
+		{"unparsable delay", banksimEnv("BANKSIM_WEBHOOK_DELAY", "soon"), "BANKSIM_WEBHOOK_DELAY"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := LoadBanksim(tt.environ)
+			assert.ErrorContains(t, err, tt.wantVar)
+		})
+	}
 }
 
 func TestConfig_LoadBanksim_InvalidLogLevel(t *testing.T) {
-	_, err := LoadBanksim(map[string]string{"LOG_LEVEL": "verbose"})
+	_, err := LoadBanksim(banksimEnv("LOG_LEVEL", "verbose"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "LOG_LEVEL")
 }

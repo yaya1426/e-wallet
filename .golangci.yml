@@ -263,6 +263,39 @@ linters:
               desc: bank imports only internal/platform
             - pkg: github.com/yaya1426/e-wallet/internal/banksim
               desc: bank imports only internal/platform
+        # banksim is an external system: it shares only the HTTP contract with the wallet
+        # and imports no wallet business module, not even the bank adapter (T014).
+        banksim-deps:
+          files:
+            - "**/internal/banksim/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/yaya1426/e-wallet/internal/identity
+              desc: banksim is an external system and imports no wallet module
+            - pkg: github.com/yaya1426/e-wallet/internal/wallet
+              desc: banksim is an external system and imports no wallet module
+            - pkg: github.com/yaya1426/e-wallet/internal/ledger
+              desc: banksim is an external system and imports no wallet module
+            - pkg: github.com/yaya1426/e-wallet/internal/transaction
+              desc: banksim is an external system and imports no wallet module
+            - pkg: github.com/yaya1426/e-wallet/internal/payment
+              desc: banksim is an external system and imports no wallet module
+            - pkg: github.com/yaya1426/e-wallet/internal/transfer
+              desc: banksim is an external system and imports no wallet module
+            - pkg: github.com/yaya1426/e-wallet/internal/idempotency
+              desc: banksim is an external system and imports no wallet module
+            - pkg: github.com/yaya1426/e-wallet/internal/outbox
+              desc: banksim is an external system and imports no wallet module
+            - pkg: github.com/yaya1426/e-wallet/internal/webhook
+              desc: banksim is an external system and imports no wallet module
+            - pkg: github.com/yaya1426/e-wallet/internal/reconciliation
+              desc: banksim is an external system and imports no wallet module
+            - pkg: github.com/yaya1426/e-wallet/internal/discrepancy
+              desc: banksim is an external system and imports no wallet module
+            - pkg: github.com/yaya1426/e-wallet/internal/bank$
+              desc: banksim is an external system and imports no wallet module
+            - pkg: github.com/yaya1426/e-wallet/internal/bank/
+              desc: banksim is an external system and imports no wallet module
         # transfer orchestrates wallet, transaction, ledger, identity and idempotency (T008).
         transfer-deps:
           files:

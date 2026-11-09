@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T014 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T014-bank-simulator-core` |
 | Depends on   | T013 (contract) |
@@ -75,15 +75,15 @@ Same key + different body → `422 IDEMPOTENCY_KEY_REUSED`. Same key + same body
 Scenarios `0003`–`0009`, `GET /v1/statements`, `GET /v1/accounts/settlement`, global random failure rate, JSON snapshot (all phase 2).
 
 ## Acceptance Criteria
-- [ ] AC-1 — Debit with IBAN `…0000` → `202` with a `BSIM-` reference; after the delay the webhook server (test `httptest`) gets one `debit.succeeded` with the right fields and a valid signature; `GET /v1/operations/{key}` → `SUCCEEDED`.
-- [ ] AC-2 — Payout `…0000` → `payout.succeeded`. Debit/payout `…0001` → `debit.failed`/`payout.failed` with the listed codes; operation `FAILED`.
-- [ ] AC-3 — `…0002` → `422 INVALID_ACCOUNT`, no webhook, operation `404`; the same key again → the same 422.
-- [ ] AC-4 — Same key + same body twice → the same `bank_reference`, only one webhook. Same key + different amount → `422 IDEMPOTENCY_KEY_REUSED`.
-- [ ] AC-5 — `/admin/scenarios` with `0001` for an IBAN ending `0000` → the next request fails, the one after succeeds again.
-- [ ] AC-6 — Webhook server returns 500 twice then 200 → delivered on the 3rd attempt with the same `event_id`; signatures valid each time.
-- [ ] AC-7 — The signature matches `HMAC-SHA256(secret, t + "." + raw_body)` (known-answer test vector recorded in the test).
-- [ ] AC-8 — Invalid request bodies → `400 INVALID_REQUEST`. Missing `BANKSIM_WEBHOOK_URL` / short secret → banksim exits 1 naming the variable.
-- [ ] AC-9 — With the compose stack up, `curl` to `:9090/v1/debits` works (checked in the implementation run).
+- [x] AC-1 — Debit with IBAN `…0000` → `202` with a `BSIM-` reference; after the delay the webhook server (test `httptest`) gets one `debit.succeeded` with the right fields and a valid signature; `GET /v1/operations/{key}` → `SUCCEEDED`.
+- [x] AC-2 — Payout `…0000` → `payout.succeeded`. Debit/payout `…0001` → `debit.failed`/`payout.failed` with the listed codes; operation `FAILED`.
+- [x] AC-3 — `…0002` → `422 INVALID_ACCOUNT`, no webhook, operation `404`; the same key again → the same 422.
+- [x] AC-4 — Same key + same body twice → the same `bank_reference`, only one webhook. Same key + different amount → `422 IDEMPOTENCY_KEY_REUSED`.
+- [x] AC-5 — `/admin/scenarios` with `0001` for an IBAN ending `0000` → the next request fails, the one after succeeds again.
+- [x] AC-6 — Webhook server returns 500 twice then 200 → delivered on the 3rd attempt with the same `event_id`; signatures valid each time.
+- [x] AC-7 — The signature matches `HMAC-SHA256(secret, t + "." + raw_body)` (known-answer test vector recorded in the test).
+- [x] AC-8 — Invalid request bodies → `400 INVALID_REQUEST`. Missing `BANKSIM_WEBHOOK_URL` / short secret → banksim exits 1 naming the variable.
+- [x] AC-9 — With the compose stack up, `curl` to `:9090/v1/debits` works (checked in the implementation run).
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -110,3 +110,7 @@ Scenarios `0003`–`0009`, `GET /v1/statements`, `GET /v1/accounts/settlement`, 
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-05 | Ready | Planned with the phase-1 roadmap; all questions answered |
+| 2026-11-09 | In Progress | Implementation started on top of T013 |
+| 2026-11-09 | In Review | Implemented and verified; see implementation.md |
+| 2026-11-09 | Approved | Review round 1: Approved (2 Nits) |
+| 2026-11-09 | Done | Finalized — PR opened with GitHub auto-merge |
