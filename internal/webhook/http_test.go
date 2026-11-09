@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/yaya1426/e-wallet/internal/discrepancy"
 	"github.com/yaya1426/e-wallet/internal/platform/clock/clocktest"
 	"github.com/yaya1426/e-wallet/internal/platform/httpserver"
 	"github.com/yaya1426/e-wallet/internal/webhook"
@@ -56,6 +57,11 @@ func (f *fakeDB) count() int {
 	return f.inserts
 }
 
+// discardRecorder accepts discrepancies and drops them.
+type discardRecorder struct{}
+
+func (discardRecorder) Record(context.Context, pgx.Tx, discrepancy.New) error { return nil }
+
 // recorder counts webhook_received_total.
 type recorder struct {
 	mu      sync.Mutex
@@ -83,7 +89,7 @@ func newTestHandler(t *testing.T, db *fakeDB) (http.Handler, *recorder) {
 	t.Helper()
 	obs := &recorder{}
 	clk := clocktest.New(now)
-	svc, err := webhook.NewService(db, nil, clk, webhook.Config{Workers: 1, MaxAttempts: 1, PollInterval: time.Second}, nil, obs)
+	svc, err := webhook.NewService(db, nil, discardRecorder{}, clk, webhook.Config{Workers: 1, MaxAttempts: 1, PollInterval: time.Second}, nil, obs)
 	require.NoError(t, err)
 	mux := http.NewServeMux()
 	webhook.NewHandler(svc, secret, clk, nil, obs).Routes(mux)

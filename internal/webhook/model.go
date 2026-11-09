@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/yaya1426/e-wallet/internal/discrepancy"
 	"github.com/yaya1426/e-wallet/internal/platform/money"
 	"github.com/yaya1426/e-wallet/internal/platform/queue"
 )
@@ -70,6 +71,11 @@ type Querier interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+// Recorder records a discrepancy in the caller's transaction (discrepancy.Service).
+type Recorder interface {
+	Record(ctx context.Context, tx pgx.Tx, d discrepancy.New) error
 }
 
 // Transactor runs fn in one database transaction (database.DB.InTx).

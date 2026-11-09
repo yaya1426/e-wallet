@@ -222,9 +222,9 @@ func latestMigration(t *testing.T) int {
 	return len(ups)
 }
 
-// TestServe_Inbox: serve mounts POST /webhooks/bank and stores signed events; it processes
-// them only when INBOX_ENABLED and a bank event handler is wired (payment, T016), so in
-// T015 the events wait as PENDING (T015 AC-8).
+// TestServe_Inbox: serve mounts POST /webhooks/bank and stores signed events. With
+// INBOX_ENABLED=false they wait as PENDING (T015 AC-8); by default the inbox runs with the
+// payment handler (T016), so an event that can never be applied ends FAILED.
 func TestServe_Inbox(t *testing.T) {
 	url := databasetest.Shared(t).NewDatabase(t)
 	code, _, stderr := runCLI(t, map[string]string{"DATABASE_URL": url}, "migrate", "up")
@@ -292,11 +292,11 @@ func TestServe_Inbox(t *testing.T) {
 	assert.Contains(t, logs, "INBOX_ENABLED=false")
 
 	logs = serveWith("true", func(base string) {
-		assert.Equal(t, http.StatusOK, postEvent(base, "evt-no-handler"))
-		time.Sleep(300 * time.Millisecond)
+		assert.Equal(t, http.StatusOK, postEvent(base, "evt-incomplete"))
+		assert.Eventually(t, func() bool { return statusOf("evt-incomplete") == "FAILED" }, 10*time.Second, 20*time.Millisecond,
+			"processed: the event lacks the fields needed to apply it")
 	})
-	assert.Equal(t, "PENDING", statusOf("evt-no-handler"), "no handler is wired before T016")
-	assert.Contains(t, logs, "no bank event handler")
+	assert.Contains(t, logs, `"msg":"inbox processing started"`)
 }
 
 // syncBuffer is a bytes.Buffer safe for the serve goroutine and the test.

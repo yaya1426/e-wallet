@@ -11,10 +11,12 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/yaya1426/e-wallet/internal/discrepancy"
 	"github.com/yaya1426/e-wallet/internal/idempotency"
 	"github.com/yaya1426/e-wallet/internal/identity"
 	"github.com/yaya1426/e-wallet/internal/ledger"
 	"github.com/yaya1426/e-wallet/internal/outbox"
+	"github.com/yaya1426/e-wallet/internal/payment"
 	"github.com/yaya1426/e-wallet/internal/platform/clock"
 	"github.com/yaya1426/e-wallet/internal/platform/config"
 	"github.com/yaya1426/e-wallet/internal/platform/database"
@@ -223,12 +225,15 @@ func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logge
 	if err != nil {
 		return nil, err
 	}
-	inboxSvc, err := webhook.NewService(db.Pool(), db, clk, webhook.Config{
+	discrepancySvc := discrepancy.NewService(db.Pool(), clk, log)
+	paymentSvc := payment.NewService(walletSvc, transactionSvc, ledgerSvc, discrepancySvc, clk, log)
+	inboxSvc, err := webhook.NewService(db.Pool(), db, discrepancySvc, clk, webhook.Config{
 		Workers: cfg.InboxWorkers, MaxAttempts: cfg.InboxMaxAttempts, PollInterval: cfg.QueuePollInterval,
 	}, log, obs)
 	if err != nil {
 		return nil, err
 	}
+	inboxSvc.SetHandler(paymentSvc) // bank outcomes are applied by payment (TDR-007 §3)
 	transferSvc := transfer.NewService(db, identitySvc, walletSvc, ledgerSvc, transactionSvc, idempotencySvc, limits(cfg), clk)
 	return &api{
 		identity: identity.NewHandler(identitySvc, identity.NewLoginLimiter(clk), log),

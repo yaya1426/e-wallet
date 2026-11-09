@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/yaya1426/e-wallet/internal/discrepancy"
 	"github.com/yaya1426/e-wallet/internal/platform/clock"
 	"github.com/yaya1426/e-wallet/internal/platform/id"
 	"github.com/yaya1426/e-wallet/internal/platform/money"
@@ -41,12 +42,14 @@ type Config struct {
 
 // Service stores bank events and processes them.
 type Service struct {
-	db     Querier
-	tx     Transactor
-	clock  clock.Clock
-	log    *slog.Logger
-	obs    Observer
-	runner *queue.Runner
+	db            Querier
+	tx            Transactor
+	discrepancies Recorder
+	maxAttempts   int
+	clock         clock.Clock
+	log           *slog.Logger
+	obs           Observer
+	runner        *queue.Runner
 
 	mu      sync.RWMutex
 	handler EventHandler
@@ -54,8 +57,9 @@ type Service struct {
 }
 
 // NewService returns the inbox. db is the pool used to store, claim and mark events; tx runs
-// each event's handler in its own transaction. log and obs may be nil.
-func NewService(db Querier, tx Transactor, clk clock.Clock, cfg Config, log *slog.Logger, obs Observer) (*Service, error) {
+// each event's handler in its own transaction; discrepancies records UNKNOWN_BANK_EVENT. log
+// and obs may be nil.
+func NewService(db Querier, tx Transactor, discrepancies Recorder, clk clock.Clock, cfg Config, log *slog.Logger, obs Observer) (*Service, error) {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
@@ -68,7 +72,10 @@ func NewService(db Querier, tx Transactor, clk clock.Clock, cfg Config, log *slo
 	if cfg.HandlerTimeout == 0 {
 		cfg.HandlerTimeout = DefaultHandlerTimeout
 	}
-	s := &Service{db: db, tx: tx, clock: clk, log: log, obs: obs}
+	if discrepancies == nil {
+		return nil, errors.New("webhook: a discrepancy recorder is required")
+	}
+	s := &Service{db: db, tx: tx, discrepancies: discrepancies, maxAttempts: cfg.MaxAttempts, clock: clk, log: log, obs: obs}
 	runner, err := queue.NewRunner(queue.Config{
 		Name: QueueName, Workers: cfg.Workers, PollInterval: cfg.PollInterval, Lease: cfg.Lease,
 		HandlerTimeout: cfg.HandlerTimeout, MaxAttempts: cfg.MaxAttempts,
@@ -133,7 +140,8 @@ func (s *Service) Run(ctx context.Context) error {
 
 // process is the queue handler for one inbox event (TDR-007 §3). An event that can never be
 // applied fails at once; otherwise the handler runs in its own transaction and any error,
-// including ErrUnknownTransaction, is retried until the event becomes DEAD.
+// including ErrUnknownTransaction, is retried until the event becomes DEAD. When the last
+// attempt still finds no transaction, an UNKNOWN_BANK_EVENT discrepancy is recorded first.
 func (s *Service) process(ctx context.Context, job queue.Job) queue.Result {
 	ev, err := decodeEvent(job.Payload)
 	if err != nil {
@@ -155,12 +163,37 @@ func (s *Service) process(ctx context.Context, job queue.Job) queue.Result {
 		log.InfoContext(ctx, "bank event processed", slog.String("result", "done"))
 		return queue.Done()
 	case errors.Is(err, ErrUnknownTransaction):
+		if job.Attempts >= s.maxAttempts {
+			s.recordUnknown(ctx, log, ev)
+			return queue.Retry(err) // the runner marks it DEAD: attempts are used up
+		}
 		log.WarnContext(ctx, "bank event for an unknown transaction", slog.String("result", "retry"))
 		return queue.Retry(err)
 	default:
 		log.WarnContext(ctx, "bank event processing failed", slog.String("result", "retry"), slog.Any("error", err))
 		return queue.Retry(err)
 	}
+}
+
+// recordUnknown records UNKNOWN_BANK_EVENT for an event no transaction matched after the
+// last attempt (TDR-007 §3). It runs in its own transaction: the handler's was rolled back.
+// A failure is logged; the DEAD event itself keeps the payload for an operator.
+func (s *Service) recordUnknown(ctx context.Context, log *slog.Logger, ev BankEvent) {
+	err := s.tx.InTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		return s.discrepancies.Record(ctx, tx, discrepancy.New{
+			Kind: discrepancy.KindUnknownBankEvent, Severity: discrepancy.SeverityWarning,
+			Details: map[string]any{
+				"provider": Provider, "event_id": ev.EventID, "event_type": ev.Type,
+				"bank_reference": ev.BankReference, "idempotency_key": ev.IdempotencyKey,
+				"amount_minor": ev.Amount.Amount(), "currency": ev.Amount.Currency(),
+			},
+		})
+	})
+	if err != nil {
+		log.ErrorContext(ctx, "unknown bank event: discrepancy not recorded", slog.Any("error", err))
+		return
+	}
+	log.ErrorContext(ctx, "bank event for an unknown transaction is dead", slog.String("result", "dead"))
 }
 
 // wireEvent is the webhook body (TDR-007 §4). Unknown fields are ignored so the bank can add
