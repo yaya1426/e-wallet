@@ -18,6 +18,9 @@ type Metrics struct {
 	requestDuration *prometheus.HistogramVec
 	txRetries       *prometheus.CounterVec
 	txTryAgain      prometheus.Counter
+	queueJobs       *prometheus.CounterVec
+	queueClaimed    *prometheus.CounterVec
+	queueDuration   *prometheus.HistogramVec
 }
 
 // New creates the registry and registers all collectors.
@@ -42,7 +45,21 @@ func New() *Metrics {
 			Help: "Database transactions abandoned with TRY_AGAIN after all retries.",
 		}),
 	}
+	m.queueJobs = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "queue_jobs_total",
+		Help: "Queue jobs handled, by queue and result (done, retry, dead, failed).",
+	}, []string{"queue", "result"})
+	m.queueClaimed = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "queue_claimed_total",
+		Help: "Queue jobs claimed by the dispatcher, by queue.",
+	}, []string{"queue"})
+	m.queueDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "queue_handler_duration_seconds",
+		Help:    "Time spent in queue handlers, by queue.",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"queue"})
 	m.registry.MustRegister(
+		m.queueJobs, m.queueClaimed, m.queueDuration,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 		m.requests,
@@ -76,4 +93,15 @@ func (m *Metrics) ObserveTxRetry(reason string) {
 // ObserveTxTryAgain counts one transaction abandoned after all retries (database.TxObserver).
 func (m *Metrics) ObserveTxTryAgain() {
 	m.txTryAgain.Inc()
+}
+
+// ObserveQueueClaimed counts jobs claimed by a queue dispatcher (queue.Observer).
+func (m *Metrics) ObserveQueueClaimed(queue string, n int) {
+	m.queueClaimed.WithLabelValues(queue).Add(float64(n))
+}
+
+// ObserveQueueJob counts one handled job and its handler duration (queue.Observer).
+func (m *Metrics) ObserveQueueJob(queue, result string, handlerDuration time.Duration) {
+	m.queueJobs.WithLabelValues(queue, result).Inc()
+	m.queueDuration.WithLabelValues(queue).Observe(handlerDuration.Seconds())
 }
