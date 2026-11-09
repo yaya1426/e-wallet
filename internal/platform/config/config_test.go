@@ -34,6 +34,8 @@ func TestConfig_LoadWallet_Defaults(t *testing.T) {
 
 		BankHTTPTimeout: 5 * time.Second,
 
+		InboxEnabled: true, InboxWorkers: 4, InboxMaxAttempts: 10,
+
 		LimitTopUpMin: 1000, LimitTopUpMax: 3_000_000,
 		LimitWithdrawalMin: 1000, LimitWithdrawalMax: 3_000_000,
 		LimitP2PMin: 100, LimitP2PMax: 3_000_000,
@@ -131,7 +133,7 @@ func TestConfig_Outbox(t *testing.T) {
 }
 
 func TestConfig_Bank(t *testing.T) {
-	serve := map[string]string{"DATABASE_URL": testDatabaseURL, "JWT_SECRET": strings.Repeat("s", 32)}
+	serve := map[string]string{"DATABASE_URL": testDatabaseURL, "JWT_SECRET": strings.Repeat("s", 32), "BANK_WEBHOOK_SECRET": strings.Repeat("w", 32)}
 	with := func(kv ...string) map[string]string {
 		env := map[string]string{}
 		for k, v := range serve {
@@ -162,6 +164,56 @@ func TestConfig_Bank(t *testing.T) {
 	for _, bad := range []string{"0s", "-1s", "5"} {
 		_, err := LoadWallet(with("BANK_BASE_URL", "http://b", "BANK_HTTP_TIMEOUT", bad))
 		assert.ErrorContains(t, err, "BANK_HTTP_TIMEOUT", bad)
+	}
+}
+
+// AC-8 (T015): the inbox settings and the webhook secret.
+func TestConfig_Inbox(t *testing.T) {
+	cfg, err := LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL})
+	require.NoError(t, err)
+	assert.True(t, cfg.InboxEnabled)
+	assert.Equal(t, 4, cfg.InboxWorkers)
+	assert.Equal(t, 10, cfg.InboxMaxAttempts)
+	assert.Empty(t, cfg.BankWebhookSecret)
+
+	cfg, err = LoadWallet(map[string]string{
+		"DATABASE_URL": testDatabaseURL, "INBOX_ENABLED": "false", "INBOX_WORKERS": "2", "INBOX_MAX_ATTEMPTS": "1",
+	})
+	require.NoError(t, err)
+	assert.False(t, cfg.InboxEnabled)
+	assert.Equal(t, 2, cfg.InboxWorkers)
+	assert.Equal(t, 1, cfg.InboxMaxAttempts)
+
+	invalid := []struct{ name, value string }{
+		{"INBOX_ENABLED", "maybe"},
+		{"INBOX_WORKERS", "0"}, {"INBOX_WORKERS", "-1"}, {"INBOX_WORKERS", "many"},
+		{"INBOX_MAX_ATTEMPTS", "0"}, {"INBOX_MAX_ATTEMPTS", "x"},
+	}
+	for _, tt := range invalid {
+		t.Run(tt.name+"="+tt.value, func(t *testing.T) {
+			_, err := LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL, tt.name: tt.value})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.name)
+		})
+	}
+
+	// BANK_WEBHOOK_SECRET is required by serve only (the migrate commands run without it).
+	base := map[string]string{"DATABASE_URL": testDatabaseURL, "JWT_SECRET": strings.Repeat("s", 32), "BANK_BASE_URL": "http://banksim:9090"}
+	for _, tt := range []struct {
+		secret string
+		ok     bool
+	}{{"", false}, {strings.Repeat("w", 31), false}, {strings.Repeat("w", 32), true}} {
+		environ := map[string]string{"BANK_WEBHOOK_SECRET": tt.secret}
+		for k, v := range base {
+			environ[k] = v
+		}
+		cfg, err := LoadWallet(environ)
+		require.NoError(t, err)
+		if tt.ok {
+			assert.NoError(t, cfg.ValidateServe())
+		} else {
+			assert.ErrorContains(t, cfg.ValidateServe(), "BANK_WEBHOOK_SECRET must be at least 32 bytes")
+		}
 	}
 }
 
@@ -239,7 +291,7 @@ func TestConfig_ValidateServe_JWT(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			environ := map[string]string{"DATABASE_URL": testDatabaseURL, "BANK_BASE_URL": "http://banksim:9090"}
+			environ := map[string]string{"DATABASE_URL": testDatabaseURL, "BANK_BASE_URL": "http://banksim:9090", "BANK_WEBHOOK_SECRET": strings.Repeat("w", 32)}
 			for k, v := range tt.environ {
 				environ[k] = v
 			}

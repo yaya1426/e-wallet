@@ -21,6 +21,8 @@ tags:
     description: Registration and login (TDR-011).
   - name: wallet
     description: The signed-in user's wallet.
+  - name: webhooks
+    description: Calls from the bank (TDR-007); authenticated by an HMAC signature, not a user token.
 security: []
 paths:
   /v1/auth/register:
@@ -485,6 +487,74 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/Internal'
+  /webhooks/bank:
+    post:
+      tags: [webhooks]
+      operationId: receiveBankWebhook
+      summary: Receive a bank event (debit/payout succeeded or failed)
+      description: |
+        Called by the bank, not by apps (TDR-007). The header `X-Bank-Signature:
+        t=<unix seconds>,v1=<hex HMAC-SHA256(secret, t + "." + raw body)>` must verify and `t`
+        must be within 5 minutes of the server time; several `v1` values may be sent. The event
+        is stored once per `event_id` and processed asynchronously: `200` means stored (or
+        already stored), not applied. Only `event_id` and `event_type` are checked here.
+      parameters:
+        - name: X-Bank-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+          example: t=1762682400,v1=b6625751ed23392018d345cd665e5ef0b4664c0660f71789ed110eaafe0e3bb8
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BankEvent'
+      responses:
+        '200':
+          description: Stored, or a duplicate of a stored event.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    const: ok
+        '400':
+          description: '`MALFORMED_REQUEST`: not a JSON object, or `event_id` / `event_type` missing.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: '`INVALID_SIGNATURE`: the header is missing or malformed, no signature matches, or `t` is more than 5 minutes away.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          $ref: '#/components/responses/RequestTooLarge'
+        '503':
+          description: '`TRY_AGAIN`: the event could not be stored; the bank retries.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
   parameters:
     IdempotencyKey:
@@ -558,6 +628,40 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
   schemas:
+    BankEvent:
+      type: object
+      description: A bank event (TDR-007 §4). Unknown fields are ignored.
+      required: [event_id, event_type]
+      properties:
+        event_id:
+          type: string
+          description: Unique per event; repeated on the bank's retries.
+        event_type:
+          type: string
+          enum: [debit.succeeded, debit.failed, payout.succeeded, payout.failed]
+        bank_reference:
+          type: string
+        idempotency_key:
+          type: string
+          format: uuid
+          description: Our transaction ID, sent with the bank request.
+        amount_minor:
+          type: integer
+          format: int64
+          minimum: 1
+        currency:
+          type: string
+          const: EGP
+        status:
+          type: string
+          enum: [SUCCEEDED, FAILED]
+        failure_code:
+          type: string
+        failure_message:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
     Error:
       type: object
       description: Error body of every non-2xx response (TDR-013).

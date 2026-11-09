@@ -9,19 +9,23 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/yaya1426/e-wallet/internal/banksim"
 	"github.com/yaya1426/e-wallet/internal/platform/config"
 	"github.com/yaya1426/e-wallet/internal/platform/database"
 	"github.com/yaya1426/e-wallet/internal/platform/database/databasetest"
 	"github.com/yaya1426/e-wallet/internal/platform/logger"
 	"github.com/yaya1426/e-wallet/internal/platform/metrics"
+	"github.com/yaya1426/e-wallet/internal/webhook"
 	"github.com/yaya1426/e-wallet/migrations"
 )
 
@@ -141,10 +145,11 @@ func TestServe_CancelledContext_ExitsZero(t *testing.T) {
 	done := make(chan int, 1)
 	go func() {
 		done <- run(ctx, []string{"serve"}, map[string]string{
-			"DATABASE_URL":  url,
-			"HTTP_ADDR":     "127.0.0.1:0",
-			"JWT_SECRET":    testJWTSecret,
-			"BANK_BASE_URL": testBankURL,
+			"DATABASE_URL":        url,
+			"HTTP_ADDR":           "127.0.0.1:0",
+			"JWT_SECRET":          testJWTSecret,
+			"BANK_BASE_URL":       testBankURL,
+			"BANK_WEBHOOK_SECRET": testWebhookSecret,
 		}, io.Discard, io.Discard)
 	}()
 
@@ -185,7 +190,7 @@ func TestServe_OutboxDisabled(t *testing.T) {
 		go func() {
 			done <- run(ctx, []string{"serve"}, map[string]string{
 				"DATABASE_URL": url, "HTTP_ADDR": "127.0.0.1:0", "JWT_SECRET": testJWTSecret, "BANK_BASE_URL": testBankURL,
-				"OUTBOX_ENABLED": enabled, "QUEUE_POLL_INTERVAL": "50ms",
+				"BANK_WEBHOOK_SECRET": testWebhookSecret, "OUTBOX_ENABLED": enabled, "QUEUE_POLL_INTERVAL": "50ms",
 			}, &out, io.Discard)
 		}()
 		until()
@@ -215,4 +220,99 @@ func latestMigration(t *testing.T) int {
 	ups, err := fs.Glob(migrations.FS, "*.up.sql")
 	require.NoError(t, err)
 	return len(ups)
+}
+
+// TestServe_Inbox: serve mounts POST /webhooks/bank and stores signed events; it processes
+// them only when INBOX_ENABLED and a bank event handler is wired (payment, T016), so in
+// T015 the events wait as PENDING (T015 AC-8).
+func TestServe_Inbox(t *testing.T) {
+	url := databasetest.Shared(t).NewDatabase(t)
+	code, _, stderr := runCLI(t, map[string]string{"DATABASE_URL": url}, "migrate", "up")
+	require.Equal(t, exitOK, code, stderr)
+	db, err := database.Open(context.Background(), url, database.Options{Tx: database.DefaultTxSettings()})
+	require.NoError(t, err)
+	defer db.Close()
+
+	serveWith := func(enabled string, use func(base string)) string {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		addr := ln.Addr().String()
+		require.NoError(t, ln.Close())
+		ctx, cancel := context.WithCancel(context.Background())
+		var out syncBuffer
+		done := make(chan int, 1)
+		go func() {
+			done <- run(ctx, []string{"serve"}, map[string]string{
+				"DATABASE_URL": url, "HTTP_ADDR": addr, "JWT_SECRET": testJWTSecret, "BANK_BASE_URL": testBankURL,
+				"BANK_WEBHOOK_SECRET": testWebhookSecret, "INBOX_ENABLED": enabled, "QUEUE_POLL_INTERVAL": "50ms",
+			}, &out, io.Discard)
+		}()
+		base := "http://" + addr
+		require.Eventually(t, func() bool {
+			resp, err := http.Get(base + "/healthz")
+			if err != nil {
+				return false
+			}
+			_ = resp.Body.Close()
+			return resp.StatusCode == http.StatusOK
+		}, 10*time.Second, 20*time.Millisecond)
+		use(base)
+		cancel()
+		select {
+		case code := <-done:
+			require.Equal(t, exitOK, code)
+		case <-time.After(15 * time.Second):
+			t.Fatal("serve did not stop after cancel")
+		}
+		return out.String()
+	}
+	postEvent := func(base, eventID string) int {
+		body := []byte(`{"event_id":"` + eventID + `","event_type":"debit.succeeded"}`)
+		req, err := http.NewRequest(http.MethodPost, base+"/webhooks/bank", bytes.NewReader(body))
+		require.NoError(t, err)
+		req.Header.Set(webhook.SignatureHeader, banksim.Sign([]byte(testWebhookSecret), time.Now(), body))
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+	statusOf := func(eventID string) string {
+		var s string
+		require.NoError(t, db.Pool().QueryRow(context.Background(),
+			`SELECT status FROM inbox_events WHERE provider_event_id = $1`, eventID).Scan(&s))
+		return s
+	}
+
+	logs := serveWith("false", func(base string) {
+		assert.Equal(t, http.StatusOK, postEvent(base, "evt-disabled"))
+		time.Sleep(300 * time.Millisecond)
+	})
+	assert.Equal(t, "PENDING", statusOf("evt-disabled"), "stored, not processed")
+	assert.Contains(t, logs, `"msg":"inbox processing disabled"`)
+	assert.Contains(t, logs, "INBOX_ENABLED=false")
+
+	logs = serveWith("true", func(base string) {
+		assert.Equal(t, http.StatusOK, postEvent(base, "evt-no-handler"))
+		time.Sleep(300 * time.Millisecond)
+	})
+	assert.Equal(t, "PENDING", statusOf("evt-no-handler"), "no handler is wired before T016")
+	assert.Contains(t, logs, "no bank event handler")
+}
+
+// syncBuffer is a bytes.Buffer safe for the serve goroutine and the test.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }

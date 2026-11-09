@@ -34,6 +34,22 @@ type IdempotencyKey struct {
 	ExpiresAt      time.Time
 }
 
+type InboxEvent struct {
+	ID              uuid.UUID
+	Provider        string
+	ProviderEventID string
+	EventType       string
+	Payload         []byte
+	Status          string
+	Attempts        int32
+	NextAttemptAt   time.Time
+	LockedBy        pgtype.Text
+	LockedUntil     pgtype.Timestamptz
+	LastError       pgtype.Text
+	ReceivedAt      time.Time
+	ProcessedAt     pgtype.Timestamptz
+}
+
 type JournalEntry struct {
 	ID            uuid.UUID
 	TransactionID uuid.UUID
