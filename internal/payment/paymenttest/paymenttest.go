@@ -5,27 +5,24 @@ import (
 	"context"
 	"testing"
 
-	"github.com/yaya1426/e-wallet/internal/ledger"
-	"github.com/yaya1426/e-wallet/internal/platform/clock"
-	"github.com/yaya1426/e-wallet/internal/platform/database"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // AssertInTransit checks data-model invariant 5: the balance of WITHDRAWALS_IN_TRANSIT equals
 // the sum of the withdrawals still waiting for the bank (PENDING or PROCESSING). Every such
-// withdrawal is reserved; every finished one is settled or refunded.
-func AssertInTransit(t testing.TB, db *database.DB) {
+// withdrawal is reserved; every finished one is settled or refunded. Both sides are read in
+// one statement (one snapshot), so the check holds while other requests run.
+func AssertInTransit(t testing.TB, pool *pgxpool.Pool) {
 	t.Helper()
-	ctx := context.Background()
-	account, err := ledger.NewService(db, clock.System{}).GetAccountByCode(ctx, db.Pool(), ledger.CodeWithdrawalsInTransit)
+	var balance, inFlight int64
+	err := pool.QueryRow(context.Background(), `SELECT
+		(SELECT balance FROM ledger_accounts WHERE code = 'WITHDRAWALS_IN_TRANSIT'),
+		(SELECT coalesce(sum(amount), 0)::bigint FROM transactions
+		  WHERE type = 'WITHDRAWAL' AND status IN ('PENDING', 'PROCESSING'))`).Scan(&balance, &inFlight)
 	if err != nil {
-		t.Fatalf("paymenttest: read %s: %v", ledger.CodeWithdrawalsInTransit, err)
+		t.Fatalf("paymenttest: read the in-transit invariant: %v", err)
 	}
-	var inFlight int64
-	if err := db.Pool().QueryRow(ctx, `SELECT coalesce(sum(amount), 0)::bigint FROM transactions
-		WHERE type = 'WITHDRAWAL' AND status IN ('PENDING', 'PROCESSING')`).Scan(&inFlight); err != nil {
-		t.Fatalf("paymenttest: sum withdrawals in flight: %v", err)
-	}
-	if got := account.Balance.Amount(); got != inFlight {
-		t.Errorf("paymenttest: %s balance is %d, withdrawals in flight sum to %d", ledger.CodeWithdrawalsInTransit, got, inFlight)
+	if balance != inFlight {
+		t.Errorf("paymenttest: WITHDRAWALS_IN_TRANSIT balance is %d, withdrawals in flight sum to %d", balance, inFlight)
 	}
 }
