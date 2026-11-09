@@ -156,6 +156,27 @@ func (s *Service) Authenticate(ctx context.Context, token string) (uuid.UUID, er
 	return userID, nil
 }
 
+// PreviewRecipient lets callerID confirm who a phone belongs to before paying (PRD-004 Q7):
+// it returns the masked name only. A malformed phone returns ErrInvalidPhone, an unknown one
+// ErrRecipientNotFound, the caller's own ErrSelfRecipient. Disabled users are shown like any
+// other (T009).
+func (s *Service) PreviewRecipient(ctx context.Context, callerID uuid.UUID, phone string) (Recipient, error) {
+	if !ValidPhone(phone) {
+		return Recipient{}, ErrInvalidPhone
+	}
+	user, err := s.GetUserByPhone(ctx, s.db.Pool(), phone)
+	if errors.Is(err, ErrUserNotFound) {
+		return Recipient{}, ErrRecipientNotFound
+	}
+	if err != nil {
+		return Recipient{}, err
+	}
+	if user.ID == callerID {
+		return Recipient{}, ErrSelfRecipient
+	}
+	return Recipient{Phone: user.Phone, MaskedName: MaskName(user.FullName)}, nil
+}
+
 // GetUser returns the user with the given ID.
 func (s *Service) GetUser(ctx context.Context, userID uuid.UUID) (User, error) {
 	row, err := queries(s.db.Pool()).GetUser(ctx, userID)

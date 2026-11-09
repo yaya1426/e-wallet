@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T009 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T009-recipient-preview` |
 | Depends on   | T004, T008 (`MaskName`) |
@@ -49,8 +49,8 @@ None.
 Rate limiting the lookup, showing the wallet status.
 
 ## Acceptance Criteria
-- [ ] AC-1 — Given a registered phone, then `200` with the phone and masked name.
-- [ ] AC-2 — Unknown → `404 RECIPIENT_NOT_FOUND`; own phone → `422 SELF_TRANSFER_NOT_ALLOWED`; missing/invalid (e.g. `01001234567`, unescaped `+` turned into a space) → `400 INVALID_PHONE`; no token → `401`.
+- [x] AC-1 — Given a registered phone, then `200` with the phone and masked name.
+- [x] AC-2 — Unknown → `404 RECIPIENT_NOT_FOUND`; own phone → `422 SELF_TRANSFER_NOT_ALLOWED`; missing/invalid (e.g. `01001234567`, unescaped `+` turned into a space) → `400 INVALID_PHONE`; no token → `401`.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -71,3 +71,7 @@ Rate limiting the lookup, showing the wallet status.
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-05 | Ready | Planned with the phase-1 roadmap; all questions answered |
+| 2026-11-09 | In Progress | implement-task started, stacked on T008 (PR #10, auto-merge) |
+| 2026-11-09 | In Review | Implemented and verified: make ci ok, 367 tests, live curl ok |
+| 2026-11-09 | Approved | Review round 1: Approved (1 Nit, optional) |
+| 2026-11-09 | Done | Finalized — PR opened with GitHub auto-merge |

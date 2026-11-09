@@ -42,6 +42,12 @@ type Registration struct {
 	WalletID uuid.UUID
 }
 
+// Recipient is what another user may see of a user before paying them (PRD-004 P2P-BR-5).
+type Recipient struct {
+	Phone      string
+	MaskedName string
+}
+
 // AccessToken is a signed JWT and how long it is valid.
 type AccessToken struct {
 	Token     string
@@ -74,6 +80,10 @@ var (
 	ErrUserDisabled = errors.New("identity: user disabled")
 	// ErrUserNotFound means no user has the given ID or phone.
 	ErrUserNotFound = errors.New("identity: user not found")
+	// ErrRecipientNotFound means no user is registered with the recipient phone.
+	ErrRecipientNotFound = errors.New("identity: recipient not found")
+	// ErrSelfRecipient means the recipient phone is the caller's own.
+	ErrSelfRecipient = errors.New("identity: recipient is the caller")
 	// ErrUnauthenticated means the access token is missing, malformed, badly signed or expired.
 	ErrUnauthenticated = errors.New("identity: unauthenticated")
 )

@@ -336,6 +336,67 @@ paths:
           $ref: '#/components/responses/Internal'
         '503':
           $ref: '#/components/responses/TryAgain'
+  /v1/recipients:
+    get:
+      tags: [wallet]
+      operationId: previewRecipient
+      summary: Confirm who a phone number belongs to before sending money
+      description: |
+        Returns the masked name only (PRD-004 P2P-BR-5, Q7), e.g. "Ahmed M. A.". Encode the `+`
+        as `%2B` in the query string; an unescaped `+` becomes a space and is rejected.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: phone
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^\+201[0125][0-9]{8}$'
+            examples: ['+201001234567']
+      responses:
+        '200':
+          description: The recipient.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recipient'
+        '400':
+          description: '`INVALID_PHONE`: missing or not an Egyptian mobile number in E.164.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/UserDisabled'
+        '404':
+          description: '`RECIPIENT_NOT_FOUND`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: '`SELF_TRANSFER_NOT_ALLOWED`: the phone is your own.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/Internal'
 components:
   parameters:
     IdempotencyKey:
@@ -589,3 +650,12 @@ components:
         created_at:
           type: string
           format: date-time
+    Recipient:
+      type: object
+      required: [phone, masked_name]
+      properties:
+        phone:
+          type: string
+        masked_name:
+          type: string
+          examples: [Ahmed M. A.]

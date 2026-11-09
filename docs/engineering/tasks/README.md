@@ -39,7 +39,7 @@ Every unit of work is a task folder `TNNN-<slug>/` (e.g. `T001-project-bootstrap
 | [T006](T006-transaction-module/task.md) | Transaction module | Done |
 | [T007](T007-api-idempotency/task.md) | API idempotency | Done |
 | [T008](T008-p2p-transfer/task.md) | P2P transfer | Done |
-| [T009](T009-recipient-preview/task.md) | Recipient preview | Ready |
+| [T009](T009-recipient-preview/task.md) | Recipient preview | Done |
 | [T010](T010-transaction-history-api/task.md) | Transaction history API | Ready |
 | [T011](T011-generic-db-queue/task.md) | Generic DB queue | Ready |
 | [T012](T012-outbox-module/task.md) | Outbox module | Ready |
