@@ -427,6 +427,96 @@ paths:
           $ref: '#/components/responses/Internal'
         '503':
           $ref: '#/components/responses/TryAgain'
+  /v1/withdrawals:
+    post:
+      tags: [wallet]
+      operationId: requestWithdrawal
+      summary: Withdraw money to the linked bank account
+      description: |
+        Asynchronous (PRD-003): `202` means the withdrawal is accepted as `PENDING` and the
+        amount is reserved at once (the available balance drops). The bank is asked to pay out
+        right after; follow it with `GET /v1/transactions/{id}` until `COMPLETED`, or `FAILED`
+        with the bank's `failure_code` (e.g. `INVALID_ACCOUNT`), in which case the amount is
+        returned to the wallet. Checks run in this order; the ones after the idempotency check
+        are stored for the `Idempotency-Key` and replayed for a repeat.
+
+        1. token → 401 `UNAUTHENTICATED`
+        2. body → 400 `MALFORMED_REQUEST`
+        3. key → 400 `IDEMPOTENCY_KEY_REQUIRED` / `IDEMPOTENCY_KEY_INVALID`
+        4. `amount_minor` ≤ 0 → 400 `INVALID_AMOUNT`
+        5. `currency` ≠ EGP → 400 `UNSUPPORTED_CURRENCY`
+        - idempotency → replay, 422 `IDEMPOTENCY_KEY_REUSED`, 409 `REQUEST_IN_PROGRESS`
+        6. wallet frozen → 403 `WALLET_FROZEN`
+        7. no linked bank account → 422 `BANK_ACCOUNT_REQUIRED`
+        8. amount outside the withdrawal range → 422 `AMOUNT_OUT_OF_RANGE`
+        9. available balance below the amount → 422 `INSUFFICIENT_FUNDS`
+        10. today's withdrawals + P2P sent + amount above the daily limit (Africa/Cairo day) → 422 `DAILY_LIMIT_EXCEEDED`
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AmountRequest'
+      responses:
+        '202':
+          description: 'Withdrawal accepted, `PENDING`, amount reserved (or the replay of an accepted one, with `Idempotent-Replayed: true`).'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedTransaction'
+        '400':
+          description: '`MALFORMED_REQUEST`, `IDEMPOTENCY_KEY_REQUIRED`, `IDEMPOTENCY_KEY_INVALID`, `INVALID_AMOUNT`, `UNSUPPORTED_CURRENCY`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          description: '`WALLET_FROZEN`, `USER_DISABLED`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: '`REQUEST_IN_PROGRESS`: a request with this key is still running.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          $ref: '#/components/responses/RequestTooLarge'
+        '422':
+          description: '`IDEMPOTENCY_KEY_REUSED`, `BANK_ACCOUNT_REQUIRED`, `AMOUNT_OUT_OF_RANGE`, `INSUFFICIENT_FUNDS`, `DAILY_LIMIT_EXCEEDED`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/Internal'
+        '503':
+          $ref: '#/components/responses/TryAgain'
   /v1/recipients:
     get:
       tags: [wallet]

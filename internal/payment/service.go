@@ -81,7 +81,8 @@ func NewService(d Deps) *Service {
 // register with outbox.Service.Register while wiring.
 func (s *Service) OutboxHandlers() map[string]outbox.Handler {
 	return map[string]outbox.Handler{
-		EventTopUpRequested: s.deliverTopUpRequested,
+		EventTopUpRequested:      s.deliverTopUpRequested,
+		EventWithdrawalRequested: s.deliverWithdrawalRequested,
 	}
 }
 

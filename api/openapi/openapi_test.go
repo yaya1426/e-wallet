@@ -61,6 +61,7 @@ func TestSpec_DescribesTheEndpoints(t *testing.T) {
 		{"/v1/me/transactions", "get"},
 		{"/v1/transactions/{id}", "get"},
 		{"/v1/topups", "post"},
+		{"/v1/withdrawals", "post"},
 		{"/webhooks/bank", "post"},
 	}
 	for _, tt := range tests {
