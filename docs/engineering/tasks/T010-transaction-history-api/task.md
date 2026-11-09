@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T010 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T010-transaction-history-api` |
 | Depends on   | T006, T008 |
@@ -87,12 +87,12 @@ serve the keyset query.
 Filters (type/status/date), statements/exports, showing the bank reference to the user.
 
 ## Acceptance Criteria
-- [ ] AC-1 — Given a user with a top-up (IN), a withdrawal (OUT), a P2P sent (OUT) and a P2P received (IN) (inserted through the services), then the list shows all 4 newest first with correct direction; counterparty is only on the P2P rows, showing the other user.
-- [ ] AC-2 — Given 45 transactions and `limit=20`, then pages of 20, 20, 5; `next_cursor` is null on the last page; no item is repeated or skipped, even with equal `created_at` values (fake clock).
-- [ ] AC-3 — `limit=0`, `101`, `abc` → `400 INVALID_LIMIT`; a garbage cursor → `400 INVALID_CURSOR`.
-- [ ] AC-4 — `GET /v1/transactions/{id}` for own (either side of a P2P) → `200`; for another user's transaction, an unknown ID, or a non-UUID → `404 TRANSACTION_NOT_FOUND`.
-- [ ] AC-5 — A failed top-up shows `status: FAILED` with `failure_code` and `failure_message`.
-- [ ] AC-6 — The party lookup is one batch call per page (the test counts calls on a fake `Parties`).
+- [x] AC-1 — Given a user with a top-up (IN), a withdrawal (OUT), a P2P sent (OUT) and a P2P received (IN) (inserted through the services), then the list shows all 4 newest first with correct direction; counterparty is only on the P2P rows, showing the other user.
+- [x] AC-2 — Given 45 transactions and `limit=20`, then pages of 20, 20, 5; `next_cursor` is null on the last page; no item is repeated or skipped, even with equal `created_at` values (fake clock).
+- [x] AC-3 — `limit=0`, `101`, `abc` → `400 INVALID_LIMIT`; a garbage cursor → `400 INVALID_CURSOR`.
+- [x] AC-4 — `GET /v1/transactions/{id}` for own (either side of a P2P) → `200`; for another user's transaction, an unknown ID, or a non-UUID → `404 TRANSACTION_NOT_FOUND`.
+- [x] AC-5 — A failed top-up shows `status: FAILED` with `failure_code` and `failure_message`.
+- [x] AC-6 — The party lookup is one batch call per page (the test counts calls on a fake `Parties`).
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -117,3 +117,7 @@ Filters (type/status/date), statements/exports, showing the bank reference to th
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-05 | Ready | Planned with the phase-1 roadmap; all questions answered |
+| 2026-11-09 | In Progress | implement-task started, stacked on T009 (local) and T008 (PR #10) |
+| 2026-11-09 | In Review | Implemented and verified: make ci ok, 374 tests |
+| 2026-11-09 | Approved | Review round 1: Approved (1 Minor recorded as follow-up) |
+| 2026-11-09 | Done | Finalized — PR opened with GitHub auto-merge |

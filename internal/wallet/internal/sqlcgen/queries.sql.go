@@ -34,6 +34,25 @@ func (q *Queries) CreateWallet(ctx context.Context, arg CreateWalletParams) erro
 	return err
 }
 
+const getWalletByID = `-- name: GetWalletByID :one
+SELECT id, user_id, ledger_account_id, currency, status, created_at, updated_at FROM wallets WHERE id = $1
+`
+
+func (q *Queries) GetWalletByID(ctx context.Context, id uuid.UUID) (Wallet, error) {
+	row := q.db.QueryRow(ctx, getWalletByID, id)
+	var i Wallet
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.LedgerAccountID,
+		&i.Currency,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getWalletByUserID = `-- name: GetWalletByUserID :one
 SELECT id, user_id, ledger_account_id, currency, status, created_at, updated_at FROM wallets WHERE user_id = $1
 `

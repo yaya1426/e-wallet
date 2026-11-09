@@ -397,6 +397,94 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/Internal'
+  /v1/me/transactions:
+    get:
+      tags: [wallet]
+      operationId: listMyTransactions
+      summary: List the signed-in user's transactions, newest first
+      description: |
+        Cursor pagination (TDR-013): pass `next_cursor` from the previous page as `cursor`;
+        it is `null` on the last page. A P2P transfer appears for both users, each with their
+        own `direction` and the other user as `counterparty`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: One page.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionPage'
+        '400':
+          description: '`INVALID_LIMIT` (not an integer from 1 to 100), `INVALID_CURSOR`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/UserDisabled'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /v1/transactions/{id}:
+    get:
+      tags: [wallet]
+      operationId: getTransaction
+      summary: Get one of the signed-in user's transactions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The transaction, from the caller's point of view.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionItem'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/UserDisabled'
+        '404':
+          description: '`TRANSACTION_NOT_FOUND`: not a UUID, unknown, or not one of the caller''s transactions.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/Internal'
 components:
   parameters:
     IdempotencyKey:
@@ -659,3 +747,56 @@ components:
         masked_name:
           type: string
           examples: [Ahmed M. A.]
+    TransactionItem:
+      type: object
+      required: [id, type, status, direction, amount_minor, currency, counterparty, note, failure_code, failure_message, created_at, updated_at, completed_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [TOPUP, WITHDRAWAL, P2P]
+        status:
+          type: string
+          enum: [PENDING, PROCESSING, COMPLETED, FAILED]
+        direction:
+          type: string
+          enum: [IN, OUT]
+          description: OUT when the caller's wallet sent the money (withdrawal, P2P sent), IN otherwise.
+        amount_minor:
+          type: integer
+          format: int64
+        currency:
+          type: string
+          const: EGP
+        counterparty:
+          description: The other user of a P2P transfer; null for other types.
+          oneOf:
+            - $ref: '#/components/schemas/Recipient'
+            - type: 'null'
+        note:
+          type: [string, 'null']
+        failure_code:
+          type: [string, 'null']
+        failure_message:
+          type: [string, 'null']
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: [string, 'null']
+          format: date-time
+    TransactionPage:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionItem'
+        next_cursor:
+          type: [string, 'null']

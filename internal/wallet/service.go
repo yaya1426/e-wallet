@@ -62,6 +62,18 @@ func (s *Service) GetByUserID(ctx context.Context, q Querier, userID uuid.UUID) 
 	return toWallet(row), nil
 }
 
+// GetByID returns the wallet with the given ID. q is a pgx.Tx or the pool.
+func (s *Service) GetByID(ctx context.Context, q Querier, walletID uuid.UUID) (Wallet, error) {
+	row, err := queries(q).GetWalletByID(ctx, walletID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Wallet{}, fmt.Errorf("%w: wallet %s", ErrNotFound, walletID)
+	}
+	if err != nil {
+		return Wallet{}, fmt.Errorf("wallet: get %s: %w", walletID, err)
+	}
+	return toWallet(row), nil
+}
+
 // View returns the user's wallet with its available balance, the cached ledger balance
 // (TDR-004 §5, PRD-001 BR-9).
 func (s *Service) View(ctx context.Context, userID uuid.UUID) (View, error) {

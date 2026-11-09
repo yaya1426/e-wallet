@@ -45,3 +45,22 @@ SELECT coalesce(sum(amount), 0)::bigint
   FROM transactions
  WHERE destination_wallet_id = @wallet_id
    AND type = 'TOPUP' AND status IN ('PENDING', 'PROCESSING');
+
+-- name: ListForWallet :many
+-- History of a wallet, newest first, keyset-paginated on (created_at, id) (TDR-013). Each half
+-- uses its own index (T006); a P2P to oneself cannot exist, so there are no duplicates.
+(SELECT * FROM transactions t
+  WHERE t.source_wallet_id = @wallet_id
+    AND (NOT @has_cursor::bool OR (t.created_at, t.id) < (@cursor_time::timestamptz, @cursor_id::uuid))
+  ORDER BY t.created_at DESC, t.id DESC LIMIT @row_limit)
+UNION ALL
+(SELECT * FROM transactions t
+  WHERE t.destination_wallet_id = @wallet_id
+    AND (NOT @has_cursor::bool OR (t.created_at, t.id) < (@cursor_time::timestamptz, @cursor_id::uuid))
+  ORDER BY t.created_at DESC, t.id DESC LIMIT @row_limit)
+ORDER BY created_at DESC, id DESC
+LIMIT @row_limit;
+
+-- name: GetVisibleTransaction :one
+SELECT * FROM transactions
+ WHERE id = @id AND (source_wallet_id = @wallet_id OR destination_wallet_id = @wallet_id);

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/yaya1426/e-wallet/internal/idempotency"
@@ -170,6 +171,7 @@ type api struct {
 	identity    *identity.Handler
 	wallet      *wallet.Handler
 	transfer    *transfer.Handler
+	history     *transaction.Handler
 	idempotency *idempotency.Service // used by the money endpoints and the cleanup job
 }
 
@@ -188,9 +190,11 @@ func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logge
 	idempotencySvc := idempotency.NewService(clk, cfg.IdempotencyTTL)
 	transferSvc := transfer.NewService(db, identitySvc, walletSvc, ledgerSvc, transactionSvc, idempotencySvc, limits(cfg), clk)
 	return &api{
-		identity:    identity.NewHandler(identitySvc, identity.NewLoginLimiter(clk), log),
-		wallet:      wallet.NewHandler(walletSvc, log),
-		transfer:    transfer.NewHandler(transferSvc, log),
+		identity: identity.NewHandler(identitySvc, identity.NewLoginLimiter(clk), log),
+		wallet:   wallet.NewHandler(walletSvc, log),
+		transfer: transfer.NewHandler(transferSvc, log),
+		history: transaction.NewHandler(transactionSvc, db.Pool(),
+			walletOfUser{db: db, wallets: walletSvc}, parties{db: db, wallets: walletSvc, identity: identitySvc}, log),
 		idempotency: idempotencySvc,
 	}, nil
 }
@@ -210,6 +214,48 @@ func (a *api) routes(mux *http.ServeMux) {
 	a.identity.Routes(mux)
 	a.wallet.Routes(mux, a.identity.RequireAuth)
 	a.transfer.Routes(mux, a.identity.RequireAuth)
+	a.history.Routes(mux, a.identity.RequireAuth)
+}
+
+// walletOfUser adapts the wallet module to transaction.WalletOfUser.
+type walletOfUser struct {
+	db      *database.DB
+	wallets *wallet.Service
+}
+
+func (a walletOfUser) WalletID(ctx context.Context, userID uuid.UUID) (uuid.UUID, error) {
+	w, err := a.wallets.GetByUserID(ctx, a.db.Pool(), userID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return w.ID, nil
+}
+
+// parties adapts the wallet and identity modules to transaction.Parties: wallet → owner →
+// phone and masked name.
+type parties struct {
+	db       *database.DB
+	wallets  *wallet.Service
+	identity *identity.Service
+}
+
+func (a parties) ByWallet(ctx context.Context, walletIDs []uuid.UUID) (map[uuid.UUID]transaction.Party, error) {
+	out := make(map[uuid.UUID]transaction.Party, len(walletIDs))
+	for _, walletID := range walletIDs {
+		if _, done := out[walletID]; done {
+			continue
+		}
+		w, err := a.wallets.GetByID(ctx, a.db.Pool(), walletID)
+		if err != nil {
+			return nil, err
+		}
+		owner, err := a.identity.GetUser(ctx, w.UserID)
+		if err != nil {
+			return nil, err
+		}
+		out[walletID] = transaction.Party{Phone: owner.Phone, MaskedName: identity.MaskName(owner.FullName)}
+	}
+	return out, nil
 }
 
 // readinessChecks reports the database connection and whether migrations are applied
