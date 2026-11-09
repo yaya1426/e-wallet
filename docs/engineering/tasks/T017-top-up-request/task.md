@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T017 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T017-top-up-request` |
 | Depends on   | T005, T007, T008 (limits, 503 mapping), T012, T013, T016 |
@@ -86,16 +86,16 @@ After the commit: `outbox.Wake()`. No ledger entry (TU-BR-1).
 Reconciliation of `DEAD`/stuck top-ups (phase 2), withdrawal (T018).
 
 ## Acceptance Criteria
-- [ ] AC-1 — Valid request → `202 PENDING`; a `TOPUP PENDING` row with the bank snapshot; one `topup.requested` outbox event; balance unchanged; no journal entry (PRD-002 AC-1).
-- [ ] AC-2 — Each row of the error table → its status + code, and no transaction or outbox row is created.
-- [ ] AC-3 — Same key + body twice (sequentially) → the same response, one transaction, one event. Two parallel with the same key → one transaction, one bank call; the other gets `409` or the replay (PRD-002 AC-5).
-- [ ] AC-4 — With a fake gateway: acceptance → `PROCESSING` + `bank_reference`; rejection `INVALID_ACCOUNT` → `FAILED` with that code; event `DONE` in both.
-- [ ] AC-5 — Fake gateway returns `ErrTemporary` 3 times then accepts → 4 calls, all with the same idempotency key, transaction `PROCESSING` (PRD-002 AC-7).
-- [ ] AC-6 — If the webhook (T016) already moved the transaction, the handler's transition conflict → `Done`, no error, no double change.
-- [ ] AC-7 — Max balance: balance 9 000 000 + pending 900 000 + request 200 000 > 10 000 000 → `WALLET_LIMIT_EXCEEDED`. Two parallel top-ups that together would exceed it → exactly one accepted.
-- [ ] AC-8 — Frozen wallet → `403`; freezing after acceptance does not stop the bank call.
-- [ ] AC-9 — End to end on compose (scripted in the implementation run, later in T020): register, link `…0000`, top up 50 000 → within ~5 s `GET /v1/transactions/{id}` is `COMPLETED` and the balance is 50 000. With `…0001` → `FAILED INSUFFICIENT_FUNDS`; with `…0002` → `FAILED INVALID_ACCOUNT`.
-- [ ] AC-10 — Ledger integrity holds after every scenario.
+- [x] AC-1 — Valid request → `202 PENDING`; a `TOPUP PENDING` row with the bank snapshot; one `topup.requested` outbox event; balance unchanged; no journal entry (PRD-002 AC-1).
+- [x] AC-2 — Each row of the error table → its status + code, and no transaction or outbox row is created.
+- [x] AC-3 — Same key + body twice (sequentially) → the same response, one transaction, one event. Two parallel with the same key → one transaction, one bank call; the other gets `409` or the replay (PRD-002 AC-5).
+- [x] AC-4 — With a fake gateway: acceptance → `PROCESSING` + `bank_reference`; rejection `INVALID_ACCOUNT` → `FAILED` with that code; event `DONE` in both.
+- [x] AC-5 — Fake gateway returns `ErrTemporary` 3 times then accepts → 4 calls, all with the same idempotency key, transaction `PROCESSING` (PRD-002 AC-7).
+- [x] AC-6 — If the webhook (T016) already moved the transaction, the handler's transition conflict → `Done`, no error, no double change.
+- [x] AC-7 — Max balance: balance 9 000 000 + pending 900 000 + request 200 000 > 10 000 000 → `WALLET_LIMIT_EXCEEDED`. Two parallel top-ups that together would exceed it → exactly one accepted.
+- [x] AC-8 — Frozen wallet → `403`; freezing after acceptance does not stop the bank call.
+- [x] AC-9 — End to end on compose (scripted in the implementation run, later in T020): register, link `…0000`, top up 50 000 → within ~5 s `GET /v1/transactions/{id}` is `COMPLETED` and the balance is 50 000. With `…0001` → `FAILED INSUFFICIENT_FUNDS`; with `…0002` → `FAILED INVALID_ACCOUNT`.
+- [x] AC-10 — Ledger integrity holds after every scenario.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -121,3 +121,7 @@ Reconciliation of `DEAD`/stuck top-ups (phase 2), withdrawal (T018).
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-05 | Ready | Planned with the phase-1 roadmap; all questions answered |
+| 2026-11-09 | In Progress | Implementation started (on top of T016, PR #18) |
+| 2026-11-09 | In Review | Implemented; verification passed (implementation.md) |
+| 2026-11-09 | Approved | Review round 1: 0 Blocker, 0 Major, 1 Minor, 1 Nit (review.md) |
+| 2026-11-09 | Done | Finalized — PR opened |
