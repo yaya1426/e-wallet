@@ -21,6 +21,8 @@ type Wallet struct {
 	// ClientIPHeader names the header that carries the client IP behind a proxy (TDR-018 §1),
 	// e.g. do-connecting-ip on DigitalOcean. Empty: the connection address.
 	ClientIPHeader string `env:"CLIENT_IP_HEADER"`
+	// InternalAPIKey protects /internal/v1/* (TDR-018 §5); empty disables those routes.
+	InternalAPIKey string `env:"INTERNAL_API_KEY"`
 	// RegisterLimitPerHour caps registrations per client IP per hour (TDR-018 §2).
 	RegisterLimitPerHour int           `env:"REGISTER_LIMIT_PER_HOUR" envDefault:"5"`
 	LogLevel             slog.Level    `env:"-"`
@@ -90,6 +92,9 @@ type Wallet struct {
 	// RefreshTokenTTL is how long a refresh token (a session) stays valid (TDR-018 §3).
 	RefreshTokenTTL time.Duration `env:"REFRESH_TOKEN_TTL" envDefault:"720h"`
 }
+
+// minInternalKeyBytes is the shortest accepted INTERNAL_API_KEY (TDR-018 §5).
+const minInternalKeyBytes = 32
 
 var validHeaderName = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 
@@ -260,6 +265,9 @@ func (cfg Wallet) validate() error {
 		if b.value < 1 || b.value > 1000 {
 			errs = append(errs, fmt.Errorf("config: %s must be between 1 and 1000, got %d", b.name, b.value))
 		}
+	}
+	if cfg.InternalAPIKey != "" && len(cfg.InternalAPIKey) < minInternalKeyBytes {
+		errs = append(errs, fmt.Errorf("config: INTERNAL_API_KEY must be at least %d bytes when set, got %d", minInternalKeyBytes, len(cfg.InternalAPIKey)))
 	}
 	if cfg.ClientIPHeader != "" && !validHeaderName.MatchString(cfg.ClientIPHeader) {
 		errs = append(errs, fmt.Errorf("config: CLIENT_IP_HEADER must be a header name (letters, digits, -), got %q", cfg.ClientIPHeader))

@@ -74,6 +74,24 @@ func (s *Service) GetByID(ctx context.Context, q Querier, walletID uuid.UUID) (W
 	return toWallet(row), nil
 }
 
+// SetStatus freezes or unfreezes a wallet (operator action, TDR-018 §5; effects in PRD-001
+// BR-8). Setting the current status again is a no-op that succeeds.
+func (s *Service) SetStatus(ctx context.Context, walletID uuid.UUID, status Status) (Wallet, error) {
+	if status != StatusActive && status != StatusFrozen {
+		return Wallet{}, fmt.Errorf("wallet: invalid status %q", status)
+	}
+	row, err := queries(s.db.Pool()).SetWalletStatus(ctx, sqlcgen.SetWalletStatusParams{
+		Status: string(status), Now: s.clock.Now(), ID: walletID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Wallet{}, fmt.Errorf("%w: wallet %s", ErrNotFound, walletID)
+	}
+	if err != nil {
+		return Wallet{}, fmt.Errorf("wallet: set status %s: %w", walletID, err)
+	}
+	return toWallet(row), nil
+}
+
 // View returns the user's wallet with its available balance, the cached ledger balance
 // (TDR-004 §5, PRD-001 BR-9).
 func (s *Service) View(ctx context.Context, userID uuid.UUID) (View, error) {

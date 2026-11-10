@@ -94,6 +94,11 @@ func serve(ctx context.Context, environ map[string]string, stdout, stderr io.Wri
 		g.Go(func() error { return api.inbox.Run(gctx) })
 		log.Info("inbox processing started", slog.Int("workers", cfg.InboxWorkers))
 	}
+	if cfg.InternalAPIKey != "" {
+		log.Info("internal API enabled")
+	} else {
+		log.Info("internal API disabled", slog.String("reason", "INTERNAL_API_KEY not set"))
+	}
 	if cfg.ReconEnabled {
 		g.Go(func() error { return api.recon.Run(gctx) })
 		log.Info("reconciliation started", slog.Any("jobs", api.recon.Jobs()))
@@ -267,6 +272,14 @@ type api struct {
 	inbox       *webhook.Service     // processed by serve when INBOX_ENABLED and a handler is set
 	webhook     *webhook.Handler
 	recon       *reconciliation.Scheduler // run by serve when RECON_ENABLED, or once by `reconcile`
+	operator    operatorRoutes            // /internal/v1/*, mounted when internalKey is set
+	internalKey string
+}
+
+// operatorRoutes are the modules' /internal/v1 endpoints (TDR-018 §5).
+type operatorRoutes struct {
+	discrepancies *discrepancy.Handler
+	wallets       *wallet.Handler
 }
 
 // observer is what the modules report to: the metrics.
@@ -341,6 +354,8 @@ func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logge
 		inbox:       inboxSvc,
 		webhook:     webhook.NewHandler(inboxSvc, []byte(cfg.BankWebhookSecret), clk, log, obs),
 	}
+	a.internalKey = cfg.InternalAPIKey
+	a.operator = operatorRoutes{discrepancies: discrepancy.NewHandler(discrepancySvc, log), wallets: a.wallet}
 	a.recon = reconciliation.NewScheduler(db, clk, log, obs)
 	for _, j := range reconJobs(reconciliation.Deps{
 		DB: db, Transactions: transactionSvc, Payment: paymentSvc, Discrepancies: discrepancySvc,
@@ -369,6 +384,11 @@ func (a *api) routes(mux *http.ServeMux) {
 	a.payment.Routes(mux, a.identity.RequireAuth)
 	a.history.Routes(mux, a.identity.RequireAuth)
 	a.webhook.Routes(mux) // authenticated by its signature, not a user token
+	if a.internalKey != "" {
+		requireKey := httpserver.RequireInternalKey(a.internalKey)
+		a.operator.discrepancies.InternalRoutes(mux, requireKey)
+		a.operator.wallets.InternalRoutes(mux, requireKey)
+	}
 }
 
 // walletOfUser adapts the wallet module to transaction.WalletOfUser.

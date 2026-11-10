@@ -305,6 +305,18 @@ func TestConfig_RefreshTokenTTL(t *testing.T) {
 	}
 }
 
+// T026 AC-5.
+func TestConfig_InternalAPIKey(t *testing.T) {
+	cfg, err := LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL})
+	require.NoError(t, err)
+	assert.Empty(t, cfg.InternalAPIKey, "optional")
+	_, err = LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL, "INTERNAL_API_KEY": strings.Repeat("k", 31)})
+	assert.ErrorContains(t, err, "INTERNAL_API_KEY must be at least 32 bytes")
+	cfg, err = LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL, "INTERNAL_API_KEY": strings.Repeat("k", 32)})
+	require.NoError(t, err)
+	assert.Len(t, cfg.InternalAPIKey, 32)
+}
+
 // banksimEnv is the smallest valid banksim environment.
 func banksimEnv(kv ...string) map[string]string {
 	env := map[string]string{"BANKSIM_WEBHOOK_URL": "http://wallet:8080/webhooks/bank", "BANK_WEBHOOK_SECRET": strings.Repeat("w", 32)}

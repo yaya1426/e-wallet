@@ -82,8 +82,16 @@ type Discrepancy struct {
 
 // Filter selects discrepancies for List.
 type Filter struct {
-	Status Status // "" means every status
-	Limit  int    // 1..MaxListLimit; 0 means DefaultListLimit
+	Status Status  // "" means every status
+	Kind   Kind    // "" means every kind
+	Limit  int     // 1..MaxListLimit; 0 means DefaultListLimit
+	After  *Cursor // nil: from the newest; else strictly older than this position
+}
+
+// Cursor is a position in the list: the (created_at, id) of the last row of a page.
+type Cursor struct {
+	CreatedAt time.Time
+	ID        uuid.UUID
 }
 
 // Limits of Filter.Limit.
@@ -92,8 +100,18 @@ const (
 	MaxListLimit     = 500
 )
 
-// ErrInvalid means a New or a Filter is not valid (a programming error in the caller).
-var ErrInvalid = errors.New("discrepancy: invalid")
+// Errors.
+var (
+	// ErrInvalid means a New or a Filter is not valid.
+	ErrInvalid = errors.New("discrepancy: invalid")
+	// ErrNotFound means no discrepancy has the ID.
+	ErrNotFound = errors.New("discrepancy: not found")
+	// ErrAlreadyResolved means the discrepancy is not OPEN any more.
+	ErrAlreadyResolved = errors.New("discrepancy: already resolved")
+)
+
+// ValidKind reports whether k is a known kind.
+func ValidKind(k Kind) bool { return k.valid() }
 
 // Querier runs SQL: the pool.
 type Querier interface {

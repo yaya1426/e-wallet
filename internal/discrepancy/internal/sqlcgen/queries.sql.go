@@ -12,6 +12,28 @@ import (
 	"github.com/google/uuid"
 )
 
+const getDiscrepancy = `-- name: GetDiscrepancy :one
+SELECT id, kind, severity, transaction_id, details, status, created_at, resolved_at, resolution_note
+  FROM reconciliation_discrepancies WHERE id = $1
+`
+
+func (q *Queries) GetDiscrepancy(ctx context.Context, id uuid.UUID) (ReconciliationDiscrepancy, error) {
+	row := q.db.QueryRow(ctx, getDiscrepancy, id)
+	var i ReconciliationDiscrepancy
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Severity,
+		&i.TransactionID,
+		&i.Details,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ResolvedAt,
+		&i.ResolutionNote,
+	)
+	return i, err
+}
+
 const insertDiscrepancy = `-- name: InsertDiscrepancy :execrows
 INSERT INTO reconciliation_discrepancies (id, kind, severity, transaction_id, details, status, created_at)
 VALUES ($1, $2, $3, $4, $5, 'OPEN', $6)
@@ -47,18 +69,32 @@ const listDiscrepancies = `-- name: ListDiscrepancies :many
 SELECT id, kind, severity, transaction_id, details, status, created_at, resolved_at, resolution_note
   FROM reconciliation_discrepancies
  WHERE ($1::text IS NULL OR status = $1::text)
+   AND ($2::text IS NULL OR kind = $2::text)
+   AND (NOT $3::boolean OR (created_at, id) < ($4::timestamptz, $5::uuid))
  ORDER BY created_at DESC, id DESC
- LIMIT $2
+ LIMIT $6
 `
 
 type ListDiscrepanciesParams struct {
-	Status   *string
-	RowLimit int32
+	Status     *string
+	Kind       *string
+	HasCursor  bool
+	CursorTime time.Time
+	CursorID   uuid.UUID
+	RowLimit   int32
 }
 
-// Newest first; id breaks ties between rows created at the same instant.
+// Newest first; id breaks ties between rows created at the same instant. The cursor is the
+// (created_at, id) of the last row of the previous page (keyset pagination, TDR-013).
 func (q *Queries) ListDiscrepancies(ctx context.Context, arg ListDiscrepanciesParams) ([]ReconciliationDiscrepancy, error) {
-	rows, err := q.db.Query(ctx, listDiscrepancies, arg.Status, arg.RowLimit)
+	rows, err := q.db.Query(ctx, listDiscrepancies,
+		arg.Status,
+		arg.Kind,
+		arg.HasCursor,
+		arg.CursorTime,
+		arg.CursorID,
+		arg.RowLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -85,4 +121,35 @@ func (q *Queries) ListDiscrepancies(ctx context.Context, arg ListDiscrepanciesPa
 		return nil, err
 	}
 	return items, nil
+}
+
+const resolveDiscrepancy = `-- name: ResolveDiscrepancy :one
+UPDATE reconciliation_discrepancies
+   SET status = 'RESOLVED', resolved_at = $1::timestamptz, resolution_note = $2::text
+ WHERE id = $3 AND status = 'OPEN'
+RETURNING id, kind, severity, transaction_id, details, status, created_at, resolved_at, resolution_note
+`
+
+type ResolveDiscrepancyParams struct {
+	Now  time.Time
+	Note string
+	ID   uuid.UUID
+}
+
+// An operator closed it (TDR-009 §3); money is never changed here.
+func (q *Queries) ResolveDiscrepancy(ctx context.Context, arg ResolveDiscrepancyParams) (ReconciliationDiscrepancy, error) {
+	row := q.db.QueryRow(ctx, resolveDiscrepancy, arg.Now, arg.Note, arg.ID)
+	var i ReconciliationDiscrepancy
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Severity,
+		&i.TransactionID,
+		&i.Details,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ResolvedAt,
+		&i.ResolutionNote,
+	)
+	return i, err
 }

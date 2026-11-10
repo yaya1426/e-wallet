@@ -23,6 +23,8 @@ tags:
     description: The signed-in user's wallet.
   - name: webhooks
     description: Calls from the bank (TDR-007); authenticated by an HMAC signature, not a user token.
+  - name: internal
+    description: Operator endpoints (TDR-018 §5), header `X-Internal-Api-Key`. Not mounted when INTERNAL_API_KEY is unset.
 security: []
 paths:
   /v1/auth/register:
@@ -836,6 +838,203 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /internal/v1/discrepancies:
+    get:
+      tags: [internal]
+      operationId: listDiscrepancies
+      summary: List discrepancies for an operator, newest first
+      security:
+        - internalKey: []
+      parameters:
+        - {name: status, in: query, required: false, schema: {type: string, enum: [OPEN, RESOLVED]}}
+        - {name: kind, in: query, required: false, schema: {type: string, enum: [STATUS_MISMATCH, AMOUNT_MISMATCH, UNMATCHED_BANK_MOVEMENT, UNMATCHED_LEDGER_MOVEMENT, STUCK_TRANSACTION, UNKNOWN_BANK_EVENT, LEDGER_INTEGRITY]}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+        - {name: cursor, in: query, required: false, schema: {type: string}}
+      responses:
+        '200':
+          description: One page; `next_cursor` is null on the last page.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Discrepancy'
+                  next_cursor:
+                    type: [string, 'null']
+        '400':
+          description: '`INVALID_FILTER` (status/kind), `INVALID_LIMIT`, `INVALID_CURSOR`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: '`UNAUTHENTICATED`: missing or wrong `X-Internal-Api-Key`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /internal/v1/discrepancies/{id}/resolve:
+    post:
+      tags: [internal]
+      operationId: resolveDiscrepancy
+      summary: Close an open discrepancy with a note (never changes money)
+      security:
+        - internalKey: []
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [note]
+              properties:
+                note:
+                  type: string
+                  description: 1 to 500 characters after trimming.
+      responses:
+        '200':
+          description: The resolved discrepancy.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Discrepancy'
+        '400':
+          description: '`MALFORMED_REQUEST`, `INVALID_NOTE`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: '`UNAUTHENTICATED`: missing or wrong `X-Internal-Api-Key`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: '`DISCREPANCY_NOT_FOUND`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: '`ALREADY_RESOLVED`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /internal/v1/wallets/{wallet_id}/freeze:
+    post:
+      tags: [internal]
+      operationId: freezeWallet
+      summary: Freeze a wallet (no outgoing money; incoming still credited, PRD-001 BR-8). Idempotent.
+      security:
+        - internalKey: []
+      parameters:
+        - {name: wallet_id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: The wallet's new status.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletStatus'
+        '401':
+          description: '`UNAUTHENTICATED`: missing or wrong `X-Internal-Api-Key`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: '`WALLET_NOT_FOUND`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /internal/v1/wallets/{wallet_id}/unfreeze:
+    post:
+      tags: [internal]
+      operationId: unfreezeWallet
+      summary: Unfreeze a wallet. Idempotent.
+      security:
+        - internalKey: []
+      parameters:
+        - {name: wallet_id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: The wallet's new status.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletStatus'
+        '401':
+          description: '`UNAUTHENTICATED`: missing or wrong `X-Internal-Api-Key`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: '`WALLET_NOT_FOUND`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/Internal'
 components:
   parameters:
     IdempotencyKey:
@@ -847,6 +1046,11 @@ components:
         type: string
         maxLength: 64
   securitySchemes:
+    internalKey:
+      type: apiKey
+      in: header
+      name: X-Internal-Api-Key
+      description: Operator key (INTERNAL_API_KEY, TDR-018 §5). Missing or wrong → 401 `UNAUTHENTICATED`.
     bearerAuth:
       type: http
       scheme: bearer
@@ -909,6 +1113,25 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
   schemas:
+    Discrepancy:
+      type: object
+      required: [id, kind, severity, transaction_id, details, status, created_at, resolved_at, resolution_note]
+      properties:
+        id: {type: string, format: uuid}
+        kind: {type: string}
+        severity: {type: string, enum: [CRITICAL, WARNING]}
+        transaction_id: {type: [string, 'null'], format: uuid}
+        details: {type: object, description: What the operator needs to investigate.}
+        status: {type: string, enum: [OPEN, RESOLVED]}
+        created_at: {type: string, format: date-time}
+        resolved_at: {type: [string, 'null'], format: date-time}
+        resolution_note: {type: [string, 'null']}
+    WalletStatus:
+      type: object
+      required: [wallet_id, status]
+      properties:
+        wallet_id: {type: string, format: uuid}
+        status: {type: string, enum: [ACTIVE, FROZEN]}
     BankEvent:
       type: object
       description: A bank event (TDR-007 §4). Unknown fields are ignored.

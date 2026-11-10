@@ -52,6 +52,8 @@ services:
       BANK_WEBHOOK_SECRET: dev-only-bank-webhook-secret-0123456789
       # DEV ONLY: the e2e suite registers many users from one IP; production keeps the default 5.
       REGISTER_LIMIT_PER_HOUR: "1000"
+      # DEV ONLY: the operator key for /internal/v1 (TDR-018). Production sets its own.
+      INTERNAL_API_KEY: dev-only-internal-api-key-0123456789abcdef
     ports:
       - "8080:8080"
     depends_on:
