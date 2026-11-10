@@ -54,6 +54,13 @@ type Wallet struct {
 	// Reconciliation (TDR-009, T021): with RECON_ENABLED=false this instance runs no
 	// reconciliation job (another instance does).
 	ReconEnabled bool `env:"RECON_ENABLED" envDefault:"true"`
+	// pending_bank_ops (T022, TDR-009 §2): every PENDING_INTERVAL, ask the bank about up to
+	// PENDING_BATCH transactions PROCESSING for more than PENDING_MIN_AGE and not checked in
+	// the last PENDING_RECHECK.
+	ReconPendingInterval time.Duration `env:"RECON_PENDING_INTERVAL" envDefault:"1m"`
+	ReconPendingMinAge   time.Duration `env:"RECON_PENDING_MIN_AGE"  envDefault:"10m"`
+	ReconPendingRecheck  time.Duration `env:"RECON_PENDING_RECHECK"  envDefault:"5m"`
+	ReconPendingBatch    int           `env:"RECON_PENDING_BATCH"    envDefault:"100"`
 
 	// Money limits in piasters (PRD-001 §5.6, T008); the wallet module applies them.
 	LimitTopUpMin      int64 `env:"LIMIT_TOPUP_MIN"       envDefault:"1000"`
@@ -86,13 +93,19 @@ func (cfg Wallet) ValidateServe() error {
 		// The login response reports expires_in in whole seconds.
 		errs = append(errs, fmt.Errorf("config: JWT_TTL must be whole seconds, got %s", cfg.JWTTTL))
 	}
-	if err := checkHTTPURL("BANK_BASE_URL", cfg.BankBaseURL); err != nil {
+	if err := cfg.ValidateBank(); err != nil {
 		errs = append(errs, err)
 	}
 	if len(cfg.BankWebhookSecret) < minWebhookSecretBytes {
 		errs = append(errs, fmt.Errorf("config: BANK_WEBHOOK_SECRET must be at least %d bytes, got %d", minWebhookSecretBytes, len(cfg.BankWebhookSecret)))
 	}
 	return errors.Join(errs...)
+}
+
+// ValidateBank checks the bank gateway settings, needed by serve and by the reconciliation
+// jobs that ask the bank.
+func (cfg Wallet) ValidateBank() error {
+	return checkHTTPURL("BANK_BASE_URL", cfg.BankBaseURL)
 }
 
 // Banksim is the configuration of the bank simulator (cmd/banksim).
@@ -170,6 +183,9 @@ func (cfg Wallet) validate() error {
 		{"IDEMPOTENCY_CLEANUP_INTERVAL", cfg.IdempotencyCleanupInterval},
 		{"QUEUE_POLL_INTERVAL", cfg.QueuePollInterval},
 		{"BANK_HTTP_TIMEOUT", cfg.BankHTTPTimeout},
+		{"RECON_PENDING_INTERVAL", cfg.ReconPendingInterval},
+		{"RECON_PENDING_MIN_AGE", cfg.ReconPendingMinAge},
+		{"RECON_PENDING_RECHECK", cfg.ReconPendingRecheck},
 	}
 	for _, p := range positive {
 		if p.value <= 0 {
@@ -214,6 +230,9 @@ func (cfg Wallet) validate() error {
 		if c.value < 1 {
 			errs = append(errs, fmt.Errorf("config: %s must be at least 1, got %d", c.name, c.value))
 		}
+	}
+	if cfg.ReconPendingBatch < 1 || cfg.ReconPendingBatch > 1000 {
+		errs = append(errs, fmt.Errorf("config: RECON_PENDING_BATCH must be between 1 and 1000, got %d", cfg.ReconPendingBatch))
 	}
 	if cfg.DBTxMaxRetries < 0 {
 		errs = append(errs, fmt.Errorf("config: DB_TX_MAX_RETRIES must not be negative, got %d", cfg.DBTxMaxRetries))

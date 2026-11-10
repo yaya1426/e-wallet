@@ -324,7 +324,7 @@ func (b *syncBuffer) String() string {
 func withReconJobs(t *testing.T, jobs ...reconciliation.Job) {
 	t.Helper()
 	previous := reconJobs
-	reconJobs = func(*api, config.Wallet) []reconciliation.Job { return jobs }
+	reconJobs = func(reconciliation.PendingBankOpsDeps, config.Wallet) []reconciliation.Job { return jobs }
 	t.Cleanup(func() { reconJobs = previous })
 }
 
@@ -343,7 +343,10 @@ func TestReconcile_CLI(t *testing.T) {
 			}
 			return reconciliation.Result{Checked: 2, Fixed: 1}
 		}})
-	env := map[string]string{"DATABASE_URL": url}
+	code, _, stderr = runCLI(t, map[string]string{"DATABASE_URL": url}, "reconcile", "--job=cli_job")
+	assert.Equal(t, exitError, code)
+	assert.Contains(t, stderr, "BANK_BASE_URL is required", "the jobs ask the bank")
+	env := map[string]string{"DATABASE_URL": url, "BANK_BASE_URL": testBankURL}
 
 	code, stdout, stderr := runCLI(t, env, "reconcile", "--job=cli_job")
 	require.Equal(t, exitOK, code, stderr)
@@ -429,4 +432,17 @@ func TestServe_ReconEnabledFlag(t *testing.T) {
 	assert.Contains(t, logs, `"msg":"reconciliation started"`)
 	assert.Contains(t, logs, "serve_job")
 	assert.NotEmpty(t, ran, "the job ran")
+}
+
+// TestReconcile_CLI_PendingBankOps: the real job is registered and runs once from the CLI
+// (T022 AC-9). With nothing to check it succeeds without calling the bank.
+func TestReconcile_CLI_PendingBankOps(t *testing.T) {
+	url := databasetest.Shared(t).NewDatabase(t)
+	code, _, stderr := runCLI(t, map[string]string{"DATABASE_URL": url}, "migrate", "up")
+	require.Equal(t, exitOK, code, stderr)
+
+	code, stdout, stderr := runCLI(t, map[string]string{"DATABASE_URL": url, "BANK_BASE_URL": testBankURL},
+		"reconcile", "--job=pending_bank_ops")
+	require.Equal(t, exitOK, code, stderr)
+	assert.Contains(t, stdout, "job pending_bank_ops SUCCESS: checked 0, fixed 0")
 }

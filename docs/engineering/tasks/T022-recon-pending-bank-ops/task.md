@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T022 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-10 |
 | Branch       | `task/T022-recon-pending-bank-ops` |
 | Depends on   | T021 (scheduler), T013 (`bank.GetOperation`), T016/T019 (`ApplyBankOutcome`) |
@@ -95,17 +95,17 @@ and not the status: it is bookkeeping, not a business change).
 drop webhooks (P2-1), resilience e2e (P2-6).
 
 ## Acceptance Criteria
-- [ ] AC-1 — Given a `PROCESSING` top-up older than 10 min whose webhook was lost and the bank says `SUCCEEDED`, when the job runs, then it is `COMPLETED`, the wallet is credited once (`TOPUP_SETTLE`), `last_reconciled_at` is set, and the run reports checked 1 / fixed 1.
-- [ ] AC-2 — The same for a withdrawal: bank `SUCCEEDED` → `COMPLETED` + `WITHDRAWAL_SETTLE`; bank `FAILED` → `FAILED` with the bank's code + `WITHDRAWAL_REFUND`; the in-transit invariant holds.
-- [ ] AC-3 — Bank still `PENDING` → only `last_reconciled_at` changes; a run within `RECHECK` does not ask again; after `RECHECK` it does.
-- [ ] AC-4 — A `PROCESSING` transaction younger than `MIN_AGE`, a `PENDING` or a terminal one, or a P2P → not selected; at most `BATCH` per run, oldest first.
-- [ ] AC-5 — Bank `NOT_FOUND` → one CRITICAL `STATUS_MISMATCH`, status and money unchanged; repeated runs do not add a second open row.
-- [ ] AC-6 — One transaction's bank call fails temporarily, another succeeds → the second is applied, the first is untouched (`last_reconciled_at` unchanged) and retried next run; the run is `SUCCESS`. All calls fail → run `FAILED` with the error text.
-- [ ] AC-7 — Bank amount ≠ ours → `AMOUNT_MISMATCH` (via `ApplyBankOutcome`), stays `PROCESSING`.
-- [ ] AC-8 — The webhook already applied the outcome (or arrives at the same time) → no double posting; the job's apply is a no-op.
-- [ ] AC-9 — Config defaults and validation for the four variables; `wallet reconcile --job=pending_bank_ops` runs it once against the configured bank.
-- [ ] AC-10 — Ledger integrity and the in-transit invariant hold after every scenario.
-- [ ] AC-11 — Manual check on compose (recorded in `implementation.md`): with banksim's webhook URL pointed at a wrong path and `RECON_PENDING_MIN_AGE=10s`, a top-up stays `PROCESSING`, then the job completes it.
+- [x] AC-1 — Given a `PROCESSING` top-up older than 10 min whose webhook was lost and the bank says `SUCCEEDED`, when the job runs, then it is `COMPLETED`, the wallet is credited once (`TOPUP_SETTLE`), `last_reconciled_at` is set, and the run reports checked 1 / fixed 1.
+- [x] AC-2 — The same for a withdrawal: bank `SUCCEEDED` → `COMPLETED` + `WITHDRAWAL_SETTLE`; bank `FAILED` → `FAILED` with the bank's code + `WITHDRAWAL_REFUND`; the in-transit invariant holds.
+- [x] AC-3 — Bank still `PENDING` → only `last_reconciled_at` changes; a run within `RECHECK` does not ask again; after `RECHECK` it does.
+- [x] AC-4 — A `PROCESSING` transaction younger than `MIN_AGE`, a `PENDING` or a terminal one, or a P2P → not selected; at most `BATCH` per run, oldest first.
+- [x] AC-5 — Bank `NOT_FOUND` → one CRITICAL `STATUS_MISMATCH`, status and money unchanged; repeated runs do not add a second open row.
+- [x] AC-6 — One transaction's bank call fails temporarily, another succeeds → the second is applied, the first is untouched (`last_reconciled_at` unchanged) and retried next run; the run is `SUCCESS`. All calls fail → run `FAILED` with the error text.
+- [x] AC-7 — Bank amount ≠ ours → `AMOUNT_MISMATCH` (via `ApplyBankOutcome`), stays `PROCESSING`.
+- [x] AC-8 — The webhook already applied the outcome (or arrives at the same time) → no double posting; the job's apply is a no-op.
+- [x] AC-9 — Config defaults and validation for the four variables; `wallet reconcile --job=pending_bank_ops` runs it once against the configured bank.
+- [x] AC-10 — Ledger integrity and the in-transit invariant hold after every scenario.
+- [x] AC-11 — Manual check on compose (recorded in `implementation.md`): with banksim's webhook URL pointed at a wrong path and `RECON_PENDING_MIN_AGE=10s`, a top-up stays `PROCESSING`, then the job completes it.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -135,3 +135,6 @@ drop webhooks (P2-1), resilience e2e (P2-6).
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-10 | Ready | Planned; all questions answered |
+| 2026-11-10 | In Review | Implemented; verification passed (implementation.md) |
+| 2026-11-10 | Approved | Review round 1: 1 Nit (review.md) |
+| 2026-11-10 | Done | Finalized — PR opened |

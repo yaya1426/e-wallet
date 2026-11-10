@@ -389,6 +389,25 @@ linters:
               desc: payment may import wallet, transaction, ledger, outbox, bank, discrepancy, idempotency, identity, webhook
             - pkg: github.com/yaya1426/e-wallet/internal/banksim
               desc: payment may import wallet, transaction, ledger, outbox, bank, discrepancy, idempotency, identity, webhook
+        # reconciliation orchestrates payment, transaction, ledger, bank, discrepancy and outbox
+        # (architecture §3.2, TDR-009); it never imports the API-side modules.
+        reconciliation-deps:
+          files:
+            - "**/internal/reconciliation/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/yaya1426/e-wallet/internal/identity
+              desc: reconciliation may import payment, transaction, ledger, bank, discrepancy, outbox
+            - pkg: github.com/yaya1426/e-wallet/internal/wallet
+              desc: reconciliation may import payment, transaction, ledger, bank, discrepancy, outbox
+            - pkg: github.com/yaya1426/e-wallet/internal/transfer
+              desc: reconciliation may import payment, transaction, ledger, bank, discrepancy, outbox
+            - pkg: github.com/yaya1426/e-wallet/internal/idempotency
+              desc: reconciliation may import payment, transaction, ledger, bank, discrepancy, outbox
+            - pkg: github.com/yaya1426/e-wallet/internal/webhook
+              desc: reconciliation may import payment, transaction, ledger, bank, discrepancy, outbox
+            - pkg: github.com/yaya1426/e-wallet/internal/banksim
+              desc: reconciliation may import payment, transaction, ledger, bank, discrepancy, outbox
     forbidigo:
       forbid:
         # Money is int64 piasters; floats are forbidden in money code (TDR-003).
