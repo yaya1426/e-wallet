@@ -42,6 +42,7 @@ func postSignedWebhook(t *testing.T, secret string, body []byte) int {
 // Scenario 7: a copy of an already-applied debit.succeeded (new event_id, same reference and
 // amount) is accepted with 200 and changes nothing (PRD-002 AC-4, TDR-005 L4).
 func TestE2E_DuplicateWebhook(t *testing.T) {
+	requireDB(t)
 	scenario(t)
 	u := newUser(t, "Duplicate Webhook")
 	u.linkBank(t, ibanSuccess)

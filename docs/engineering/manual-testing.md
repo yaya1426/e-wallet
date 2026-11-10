@@ -173,23 +173,27 @@ Expected:
 - `"BANK_ACCOUNT_REQUIRED"`: B has no linked account.
 - `"IDEMPOTENCY_KEY_REQUIRED"`: no key.
 
-## 9. Freeze a wallet
+## 9. Freeze a wallet (operator API)
 
-There is no operator API in phase 1, so freeze A's wallet with one SQL line:
+Operator endpoints need the `X-Internal-Api-Key` header. Local compose uses a DEV ONLY key:
 
 ```bash
-docker compose exec -T postgres psql -U wallet -d wallet -c \
-  "UPDATE wallets SET status = 'FROZEN' WHERE user_id = (SELECT id FROM users WHERE phone_e164 = '+201001234567')"
+OP="X-Internal-Api-Key: dev-only-internal-api-key-0123456789abcdef"
+A_WALLET=$(curl -s $API/v1/me/wallet -H "Authorization: Bearer $A" | jq -r .wallet_id)
+curl -s -X POST $API/internal/v1/wallets/$A_WALLET/freeze -H "$OP" | jq
 curl -s -X POST $API/v1/transfers -H "Authorization: Bearer $A" -H "Idempotency-Key: $(uuidgen)" \
   -H 'Content-Type: application/json' -d '{"recipient_phone":"+201001234568","amount_minor":1000,"currency":"EGP"}' | jq .error.code
 curl -s -X POST $API/v1/transfers -H "Authorization: Bearer $B" -H "Idempotency-Key: $(uuidgen)" \
   -H 'Content-Type: application/json' -d '{"recipient_phone":"+201001234567","amount_minor":1000,"currency":"EGP"}' | jq .status
 curl -s $API/v1/me/wallet -H "Authorization: Bearer $A" | jq '{status, available_balance_minor}'
+curl -s -X POST $API/internal/v1/wallets/$A_WALLET/unfreeze -H "$OP" | jq .status
 ```
 Expected:
-- A cannot send: `"WALLET_FROZEN"`.
-- A can still receive: B's transfer is `"COMPLETED"`.
-- A's wallet shows `{"status":"FROZEN","available_balance_minor":18500}`.
+- **Freeze:** `{"wallet_id": "…", "status": "FROZEN"}`.
+- **A sends:** `"WALLET_FROZEN"`.
+- **B sends to A:** `"COMPLETED"` (a frozen wallet still receives).
+- **A's wallet:** `{"status":"FROZEN","available_balance_minor":18500}`.
+- **Unfreeze:** `"ACTIVE"`.
 
 ## 10. Check the ledger
 
@@ -205,6 +209,56 @@ SELECT (SELECT count(*) FROM (SELECT journal_entry_id FROM postings GROUP BY jou
        (SELECT balance FROM ledger_accounts WHERE code = 'BANK_SETTLEMENT') AS bank_settlement"
 ```
 Expected: `unbalanced_entries 0`, `drifted_accounts 0`, `in_transit 0`, `bank_settlement 30000`: 50 000 topped up minus 20 000 paid out.
+
+
+## 11. Sessions: refresh and logout
+
+The access token lasts 15 minutes. Exchange the refresh token for a new pair; each refresh token works once:
+
+```bash
+L=$(curl -s -X POST $API/v1/auth/login -H 'Content-Type: application/json' -d '{"phone":"+201001234568","password":"secret-pass-1"}')
+R1=$(echo "$L" | jq -r .refresh_token)
+R2=$(curl -s -X POST $API/v1/auth/refresh -H 'Content-Type: application/json' -d "{\"refresh_token\":\"$R1\"}" | jq -r .refresh_token)
+curl -s -X POST $API/v1/auth/refresh -H 'Content-Type: application/json' -d "{\"refresh_token\":\"$R1\"}" | jq .error.code
+curl -s -o /dev/null -w "%{http_code}\n" -X POST $API/v1/auth/refresh -H 'Content-Type: application/json' -d "{\"refresh_token\":\"$R2\"}"
+L=$(curl -s -X POST $API/v1/auth/login -H 'Content-Type: application/json' -d '{"phone":"+201001234568","password":"secret-pass-1"}')
+curl -s -o /dev/null -w "%{http_code}\n" -X POST $API/v1/auth/logout -H "Authorization: Bearer $(echo "$L" | jq -r .access_token)" \
+  -H 'Content-Type: application/json' -d "{\"refresh_token\":\"$(echo "$L" | jq -r .refresh_token)\"}"
+```
+Expected:
+- Reusing `R1` → `"INVALID_REFRESH_TOKEN"`.
+- `R2` then also fails with `401`: reuse signs the whole session out.
+- Logout → `204`.
+
+## 12. Forgotten password (operator-assisted)
+
+```bash
+CODE=$(curl -s -X POST "$API/internal/v1/users/%2B201001234568/password-reset-code" -H "$OP" | jq -r .code)
+curl -s -o /dev/null -w "%{http_code}\n" -X POST $API/v1/auth/password-reset -H 'Content-Type: application/json' \
+  -d "{\"phone\":\"+201001234568\",\"code\":\"$CODE\",\"new_password\":\"brand-new-pass\"}"
+curl -s -X POST $API/v1/auth/login -H 'Content-Type: application/json' -d '{"phone":"+201001234568","password":"brand-new-pass"}' | jq -r .token_type
+```
+Expected:
+- The reset → `204`.
+- Login with the new password → `Bearer`. The old password no longer works, and every session of that user is signed out.
+
+## 13. Operator views
+
+```bash
+curl -s $API/internal/v1/health/ops -H "$OP" | jq '{status, discrepancies, stuck, outbox, inbox}'
+curl -s "$API/internal/v1/discrepancies?status=OPEN" -H "$OP" | jq '.items | length'
+```
+Expected: `"status": "ok"` (or `warning` while a job hasn't run yet after start-up, see the `jobs` list) and `0` open discrepancies.
+
+## On DigitalOcean
+
+The same steps work against `https://shark-app-mjjpl.ondigitalocean.app`, except:
+- **Operator key:** the real key is an encrypted app secret. Ask its owner for it; never paste it into tickets.
+- **No direct access to the simulator:** it is internal there. Use the IBAN endings to choose what happens.
+- **No database access:** skip sections 10 and 13's SQL. Use `/internal/v1/health/ops` instead.
+- **Registration limit:** 5 per IP per hour (`REGISTER_LIMIT_PER_HOUR`).
+
+The automated suite runs there with `WALLET_URL=https://… E2E_INTERNAL_API_KEY=… make e2e`; the database checks and the webhook scenario are skipped.
 
 Stop the stack with `make down`.
 

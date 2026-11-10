@@ -56,3 +56,9 @@ SELECT id, aggregate_id, event_type, coalesce(last_error, '')::text AS last_erro
 UPDATE outbox_events
    SET status = 'DONE', processed_at = @now::timestamptz, last_error = @note::text
  WHERE id = @id AND status = 'DEAD';
+
+-- name: Counts :one
+-- For the ops health summary (T028).
+SELECT count(*) FILTER (WHERE status IN ('PENDING', 'PROCESSING'))::bigint AS pending,
+       count(*) FILTER (WHERE status = 'DEAD')::bigint AS dead
+  FROM outbox_events;

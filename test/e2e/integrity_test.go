@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -18,8 +19,23 @@ import (
 )
 
 // databaseURL is the compose database as seen from the host (E2E_DATABASE_URL overrides it,
-// e.g. when POSTGRES_HOST_PORT is not 5432).
-var databaseURL = baseURL("E2E_DATABASE_URL", "postgres://wallet:wallet@localhost:5432/wallet?sslmode=disable")
+// e.g. when POSTGRES_HOST_PORT is not 5432). In remote mode there is no default: without
+// E2E_DATABASE_URL the database checks are skipped.
+var databaseURL = func() string {
+	if remote {
+		return os.Getenv("E2E_DATABASE_URL")
+	}
+	return baseURL("E2E_DATABASE_URL", "postgres://wallet:wallet@localhost:5432/wallet?sslmode=disable")
+}()
+
+// requireDB skips the test when the database is not reachable (remote mode without
+// E2E_DATABASE_URL).
+func requireDB(t *testing.T) {
+	t.Helper()
+	if databaseURL == "" {
+		t.Skip("needs the database: set E2E_DATABASE_URL")
+	}
+}
 
 var (
 	dbOnce sync.Once
@@ -47,6 +63,9 @@ func pool(t *testing.T) *pgxpool.Pool { return stackDB(t).Pool() }
 // test to finish first.
 func checkIntegrity(t *testing.T) {
 	t.Helper()
+	if databaseURL == "" {
+		return // remote without database access: covered locally and in CI
+	}
 	db := stackDB(t)
 	waitQuiet(t)
 	report, err := ledger.NewService(db, clock.System{}).VerifyIntegrity(context.Background())

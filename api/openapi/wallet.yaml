@@ -1147,6 +1147,72 @@ paths:
                 $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/Internal'
+  /internal/v1/health/ops:
+    get:
+      tags: [internal]
+      operationId: opsHealth
+      summary: What needs an operator, in one call
+      description: |
+        Status: `critical` when there is an open CRITICAL discrepancy or a DEAD outbox/inbox event;
+        `warning` when there is an open WARNING discrepancy, a stuck transaction (older than
+        RECON_STUCK_AGE), or a reconciliation job whose last run FAILED or that has not run within
+        3 intervals; else `ok` (T028).
+      security:
+        - internalKey: []
+      responses:
+        '200':
+          description: The summary.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, discrepancies, stuck, outbox, inbox, jobs]
+                properties:
+                  status: {type: string, enum: [ok, warning, critical]}
+                  discrepancies:
+                    type: object
+                    properties:
+                      open_critical: {type: integer}
+                      open_warning: {type: integer}
+                  stuck:
+                    type: object
+                    properties:
+                      TOPUP: {type: integer}
+                      WITHDRAWAL: {type: integer}
+                  outbox:
+                    type: object
+                    properties:
+                      pending: {type: integer}
+                      dead: {type: integer}
+                  inbox:
+                    type: object
+                    properties:
+                      pending: {type: integer}
+                      dead: {type: integer}
+                  jobs:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, last_status, last_finished_at, late]
+                      properties:
+                        name: {type: string}
+                        last_status: {type: [string, 'null'], enum: [SUCCESS, FAILED, null]}
+                        last_finished_at: {type: [string, 'null'], format: date-time}
+                        late: {type: boolean}
+        '401':
+          description: '`UNAUTHENTICATED`: missing or wrong `X-Internal-Api-Key`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/Internal'
 components:
   parameters:
     IdempotencyKey:

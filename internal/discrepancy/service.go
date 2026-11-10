@@ -137,3 +137,27 @@ func fromRow(r sqlcgen.ReconciliationDiscrepancy) Discrepancy {
 	}
 	return d
 }
+
+// OpenCounts are the OPEN discrepancies per severity.
+type OpenCounts struct {
+	Critical int64
+	Warning  int64
+}
+
+// CountOpen counts the OPEN discrepancies per severity (ops health, T028).
+func (s *Service) CountOpen(ctx context.Context) (OpenCounts, error) {
+	rows, err := sqlcgen.New(s.db).CountOpenBySeverity(ctx)
+	if err != nil {
+		return OpenCounts{}, fmt.Errorf("discrepancy: count open: %w", err)
+	}
+	var c OpenCounts
+	for _, r := range rows {
+		switch Severity(r.Severity) {
+		case SeverityCritical:
+			c.Critical = r.Open
+		case SeverityWarning:
+			c.Warning = r.Open
+		}
+	}
+	return c, nil
+}

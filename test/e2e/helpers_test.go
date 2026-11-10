@@ -71,6 +71,41 @@ func api(t *testing.T, method, path, token, key, body string) apiResponse {
 	return apiResponse{status: resp.StatusCode, body: decoded, replayed: resp.Header.Get("Idempotent-Replayed") == "true"}
 }
 
+// apiWithHeader calls the wallet with one extra header and no body.
+func apiWithHeader(t *testing.T, method, path, header, value string) apiResponse {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, method, walletURL+path, nil)
+	require.NoError(t, err)
+	req.Header.Set(header, value)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	raw, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	var decoded map[string]any
+	if len(raw) > 0 {
+		require.NoError(t, json.Unmarshal(raw, &decoded), string(raw))
+	}
+	return apiResponse{status: resp.StatusCode, body: decoded}
+}
+
+// loginPolitely logs in; on 429 (the login limit is 30 per client IP per minute, TDR-018) it
+// waits for the window to pass and tries again, so a fast suite run from one IP does not fail.
+func loginPolitely(t *testing.T, phone, password string) apiResponse {
+	t.Helper()
+	body := fmt.Sprintf(`{"phone":%q,"password":%q}`, phone, password)
+	deadline := time.Now().Add(90 * time.Second)
+	for {
+		r := api(t, http.MethodPost, "/v1/auth/login", "", "", body)
+		if r.status != http.StatusTooManyRequests || time.Now().After(deadline) {
+			return r
+		}
+		time.Sleep(5 * time.Second)
+	}
+}
+
 // user is a registered, logged-in user.
 type user struct {
 	phone, token, userID, walletID string
@@ -92,7 +127,7 @@ func newUser(t *testing.T, name string) user {
 	reg := api(t, http.MethodPost, "/v1/auth/register", "", "",
 		fmt.Sprintf(`{"phone":%q,"full_name":%q,"password":"e2e-pass-123"}`, phone, name))
 	require.Equal(t, http.StatusCreated, reg.status, reg.body)
-	login := api(t, http.MethodPost, "/v1/auth/login", "", "", fmt.Sprintf(`{"phone":%q,"password":"e2e-pass-123"}`, phone))
+	login := loginPolitely(t, phone, "e2e-pass-123")
 	require.Equal(t, http.StatusOK, login.status, login.body)
 	return user{phone: phone, token: login.body["access_token"].(string),
 		userID: reg.body["user_id"].(string), walletID: reg.body["wallet_id"].(string)}

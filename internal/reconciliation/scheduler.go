@@ -305,3 +305,39 @@ func lower(status string) string {
 func toInt32(n int) int32 {
 	return int32(max(0, min(n, 1<<31-1)))
 }
+
+// JobInfo describes a registered job.
+type JobInfo struct {
+	Name     string
+	Interval time.Duration
+}
+
+// Registered returns the registered jobs and their intervals.
+func (s *Scheduler) Registered() []JobInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]JobInfo, len(s.jobs))
+	for i, j := range s.jobs {
+		out[i] = JobInfo{Name: j.Name, Interval: j.Interval}
+	}
+	return out
+}
+
+// LastRun is the latest recorded run of a job.
+type LastRun struct {
+	Status     string
+	FinishedAt time.Time
+}
+
+// LastRuns returns the latest run of every job that ran at least once (ops health, T028).
+func (s *Scheduler) LastRuns(ctx context.Context) (map[string]LastRun, error) {
+	rows, err := sqlcgen.New(s.pool).LastRuns(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reconciliation: last runs: %w", err)
+	}
+	out := make(map[string]LastRun, len(rows))
+	for _, r := range rows {
+		out[r.JobName] = LastRun{Status: r.Status, FinishedAt: r.FinishedAt}
+	}
+	return out, nil
+}

@@ -58,6 +58,7 @@ func TestSpec_DescribesTheEndpoints(t *testing.T) {
 		{"/v1/auth/logout", "post"},
 		{"/v1/auth/password-reset", "post"},
 		{"/internal/v1/users/{phone}/password-reset-code", "post"},
+		{"/internal/v1/health/ops", "get"},
 		{"/v1/me/wallet", "get"},
 		{"/v1/me/bank-account", "put"},
 		{"/v1/me/bank-account", "get"},

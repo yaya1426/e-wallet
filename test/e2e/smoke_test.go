@@ -31,6 +31,12 @@ func baseURL(envVar, fallback string) string {
 var (
 	walletURL  = baseURL("WALLET_URL", "http://localhost:8080")
 	banksimURL = baseURL("BANKSIM_URL", "http://localhost:9090")
+	// remote: the suite runs against a deployed wallet (WALLET_URL set), e.g. DigitalOcean
+	// (T028). There the simulator is internal and the database is not reachable unless
+	// BANKSIM_URL / E2E_DATABASE_URL are given; the checks that need them are skipped.
+	remote = os.Getenv("WALLET_URL") != ""
+	// banksimReachable: the simulator can be called directly.
+	banksimReachable = !remote || os.Getenv("BANKSIM_URL") != ""
 )
 
 type response struct {
@@ -77,7 +83,11 @@ func waitReady(t *testing.T) response {
 
 func TestSmoke_Healthz(t *testing.T) {
 	waitReady(t)
-	for _, url := range []string{walletURL + "/healthz", banksimURL + "/healthz"} {
+	urls := []string{walletURL + "/healthz"}
+	if banksimReachable {
+		urls = append(urls, banksimURL+"/healthz")
+	}
+	for _, url := range urls {
 		r := get(t, url)
 		assert.Equal(t, http.StatusOK, r.status, url)
 		assert.JSONEq(t, `{"status":"ok"}`, r.body, url)

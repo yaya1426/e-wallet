@@ -25,3 +25,6 @@ UPDATE reconciliation_discrepancies
    SET status = 'RESOLVED', resolved_at = @now::timestamptz, resolution_note = @note::text
  WHERE id = @id AND status = 'OPEN'
 RETURNING id, kind, severity, transaction_id, details, status, created_at, resolved_at, resolution_note;
+
+-- name: CountOpenBySeverity :many
+SELECT severity, count(*)::bigint AS open FROM reconciliation_discrepancies WHERE status = 'OPEN' GROUP BY severity;

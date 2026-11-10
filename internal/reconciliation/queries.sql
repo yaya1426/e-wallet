@@ -8,3 +8,9 @@ SELECT pg_try_advisory_lock(@key::bigint) AS acquired;
 
 -- name: UnlockAdvisory :one
 SELECT pg_advisory_unlock(@key::bigint) AS released;
+
+-- name: LastRuns :many
+-- The latest run of each job, for the ops health summary (T028).
+SELECT DISTINCT ON (job_name) job_name, status, finished_at
+  FROM job_runs
+ ORDER BY job_name, finished_at DESC;
