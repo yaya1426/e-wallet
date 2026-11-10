@@ -98,6 +98,7 @@ func accessLog(log *slog.Logger, observer Observer, next http.Handler) http.Hand
 			slog.String("method", r.Method),
 			slog.String("path", r.URL.Path),
 			slog.String("route", route),
+			slog.String("client_ip", ClientIP(r)),
 			slog.Int("status", rec.status),
 			slog.Duration("duration", duration),
 		)

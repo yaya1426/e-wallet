@@ -2,7 +2,7 @@
 
 | Field      | Value |
 |------------|-------|
-| Status     | Accepted (2026-11-05, phase-1 roadmap planning; PRD-001 Q2 answered: this proposal) |
+| Status     | Accepted (2026-11-05, phase-1 roadmap planning; PRD-001 Q2 answered: this proposal). Extended by [TDR-018](TDR-018-mvp-sessions-and-operator-access.md) (2026-11-10): refresh tokens, logout, password reset, client IP, operator key |
 | Date       | 2026-11-03 |
 | Deciders   | Yahya Elaraby |
 | Related    | PRD-001 §7 |

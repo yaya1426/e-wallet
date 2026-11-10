@@ -50,6 +50,8 @@ services:
       BANK_BASE_URL: http://banksim:9090
       # DEV ONLY: the webhook HMAC secret shared with banksim (TDR-007). Production sets its own.
       BANK_WEBHOOK_SECRET: dev-only-bank-webhook-secret-0123456789
+      # DEV ONLY: the e2e suite registers many users from one IP; production keeps the default 5.
+      REGISTER_LIMIT_PER_HOUR: "1000"
     ports:
       - "8080:8080"
     depends_on:

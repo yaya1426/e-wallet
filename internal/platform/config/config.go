@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/url"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,10 +16,15 @@ import (
 
 // Wallet is the configuration of the wallet service (cmd/wallet).
 type Wallet struct {
-	DatabaseURL     string        `env:"DATABASE_URL,required,notEmpty"`
-	HTTPAddr        string        `env:"HTTP_ADDR"        envDefault:":8080"`
-	LogLevel        slog.Level    `env:"-"`
-	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"25s"`
+	DatabaseURL string `env:"DATABASE_URL,required,notEmpty"`
+	HTTPAddr    string `env:"HTTP_ADDR"        envDefault:":8080"`
+	// ClientIPHeader names the header that carries the client IP behind a proxy (TDR-018 §1),
+	// e.g. do-connecting-ip on DigitalOcean. Empty: the connection address.
+	ClientIPHeader string `env:"CLIENT_IP_HEADER"`
+	// RegisterLimitPerHour caps registrations per client IP per hour (TDR-018 §2).
+	RegisterLimitPerHour int           `env:"REGISTER_LIMIT_PER_HOUR" envDefault:"5"`
+	LogLevel             slog.Level    `env:"-"`
+	ShutdownTimeout      time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"25s"`
 
 	// Unit-of-work settings (TDR-010 §5).
 	DBLockTimeout      time.Duration `env:"DB_LOCK_TIMEOUT"      envDefault:"2s"`
@@ -82,6 +88,8 @@ type Wallet struct {
 	JWTSecret string        `env:"JWT_SECRET"`
 	JWTTTL    time.Duration `env:"JWT_TTL" envDefault:"15m"`
 }
+
+var validHeaderName = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 
 // minJWTSecretBytes is the shortest accepted HS256 secret (TDR-011, T004).
 const minJWTSecretBytes = 32
@@ -231,6 +239,7 @@ func (cfg Wallet) validate() error {
 		name  string
 		value int
 	}{
+		{"REGISTER_LIMIT_PER_HOUR", cfg.RegisterLimitPerHour},
 		{"OUTBOX_WORKERS", cfg.OutboxWorkers}, {"OUTBOX_MAX_ATTEMPTS", cfg.OutboxMaxAttempts},
 		{"INBOX_WORKERS", cfg.InboxWorkers}, {"INBOX_MAX_ATTEMPTS", cfg.InboxMaxAttempts},
 	}
@@ -246,6 +255,9 @@ func (cfg Wallet) validate() error {
 		if b.value < 1 || b.value > 1000 {
 			errs = append(errs, fmt.Errorf("config: %s must be between 1 and 1000, got %d", b.name, b.value))
 		}
+	}
+	if cfg.ClientIPHeader != "" && !validHeaderName.MatchString(cfg.ClientIPHeader) {
+		errs = append(errs, fmt.Errorf("config: CLIENT_IP_HEADER must be a header name (letters, digits, -), got %q", cfg.ClientIPHeader))
 	}
 	if cfg.DBTxMaxRetries < 0 {
 		errs = append(errs, fmt.Errorf("config: DB_TX_MAX_RETRIES must not be negative, got %d", cfg.DBTxMaxRetries))

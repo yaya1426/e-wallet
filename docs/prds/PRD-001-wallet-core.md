@@ -160,6 +160,11 @@ All limits are **configuration**, not code. Defaults:
 
 > **Q2 answered (2026-11-05):** minimal built-in auth (TDR-011) — phone + password (bcrypt),
 > short-lived JWT access token. No OTP, no refresh tokens in this phase.
+>
+> **MVP update (2026-11-10, TDR-018):**
+> - **US-7** As a user, I stay signed in for up to 30 days (refresh tokens) and can log out.
+> - **US-8** As a user who forgot my password, I get a one-time code from an operator and set a new password.
+> - **US-9** As an operator, I see and resolve discrepancies and can freeze/unfreeze a wallet.
 
 ## 8. Non-Functional Requirements
 

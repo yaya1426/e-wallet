@@ -3,7 +3,6 @@ package identity
 import (
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -34,14 +33,15 @@ const (
 
 // Handler serves the auth endpoints and provides the auth middleware.
 type Handler struct {
-	svc     *Service
-	limiter *LoginLimiter
-	log     *slog.Logger
+	svc        *Service
+	limiter    *LoginLimiter
+	registerRL *RegisterLimiter
+	log        *slog.Logger
 }
 
 // NewHandler returns the identity HTTP handler.
-func NewHandler(svc *Service, limiter *LoginLimiter, log *slog.Logger) *Handler {
-	return &Handler{svc: svc, limiter: limiter, log: log}
+func NewHandler(svc *Service, limiter *LoginLimiter, register *RegisterLimiter, log *slog.Logger) *Handler {
+	return &Handler{svc: svc, limiter: limiter, registerRL: register, log: log}
 }
 
 // Routes mounts the auth and bank-account endpoints on mux.
@@ -92,6 +92,10 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 		httpserver.WriteDecodeError(w, err)
 		return
 	}
+	if !h.registerRL.Allow(httpserver.ClientIP(r)) {
+		httpserver.WriteError(w, http.StatusTooManyRequests, CodeTooManyRequests, "Too many registrations from this network. Try again later.")
+		return
+	}
 	reg, err := h.svc.Register(r.Context(), RegisterInput(req))
 	if err != nil {
 		h.writeError(w, r, err)
@@ -123,7 +127,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		httpserver.WriteDecodeError(w, err)
 		return
 	}
-	if !h.limiter.Allow(req.Phone, clientIP(r)) {
+	if !h.limiter.Allow(req.Phone, httpserver.ClientIP(r)) {
 		httpserver.WriteError(w, http.StatusTooManyRequests, CodeTooManyRequests, "Too many login attempts. Try again in a minute.")
 		return
 	}
@@ -260,13 +264,4 @@ func bearerToken(r *http.Request) (string, bool) {
 		return "", false
 	}
 	return token, true
-}
-
-// clientIP is the host part of r.RemoteAddr. X-Forwarded-For is ignored in phase 1 (T004).
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }

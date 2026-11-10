@@ -5,13 +5,18 @@ import (
 	"net/http"
 )
 
-// NewHandler wraps mux with the standard middleware chain: request ID → access log and
-// metrics → panic recovery → JSON 404/405 for requests mux cannot route.
+// NewHandler wraps mux with the standard middleware chain: request ID → client IP → access
+// log and metrics → panic recovery → JSON 404/405 for requests mux cannot route.
 // observer may be nil.
-func NewHandler(mux *http.ServeMux, log *slog.Logger, observer Observer) http.Handler {
+func NewHandler(mux *http.ServeMux, log *slog.Logger, observer Observer, opts ...Option) http.Handler {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
 	h := jsonFallback(mux)
 	h = recoverPanic(log, h)
 	h = accessLog(log, observer, h)
+	h = clientIPMiddleware(o.clientIPHeader, h)
 	return requestID(h)
 }
 

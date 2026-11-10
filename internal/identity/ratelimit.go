@@ -91,3 +91,22 @@ func (l *LoginLimiter) Allow(phone, ip string) bool {
 	}
 	return l.perPhone.allow("phone:" + phone)
 }
+
+// registerWindow is the registration limit's window (TDR-018 §2).
+const registerWindow = time.Hour
+
+// RegisterLimiter slows mass account creation: at most perHour attempts per client IP per
+// hour, valid or not (REGISTER_LIMIT_PER_HOUR, default 5). In memory, per instance.
+type RegisterLimiter struct {
+	perIP *fixedWindowLimiter
+}
+
+// NewRegisterLimiter returns the registration limiter.
+func NewRegisterLimiter(perHour int, clk clock.Clock) *RegisterLimiter {
+	return &RegisterLimiter{perIP: newFixedWindowLimiter(perHour, registerWindow, clk)}
+}
+
+// Allow reports whether one more registration attempt from ip is allowed, and counts it.
+func (l *RegisterLimiter) Allow(ip string) bool {
+	return l.perIP.allow("ip:" + ip)
+}
