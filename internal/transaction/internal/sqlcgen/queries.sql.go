@@ -204,6 +204,62 @@ func (q *Queries) GetVisibleTransaction(ctx context.Context, arg GetVisibleTrans
 	return i, err
 }
 
+const listForReconciliation = `-- name: ListForReconciliation :many
+SELECT id, type, status, initiator_user_id, source_wallet_id, destination_wallet_id, amount, currency, idempotency_key, bank_reference, bank_account_snapshot, note, failure_code, failure_message, last_reconciled_at, created_at, updated_at, completed_at FROM transactions
+ WHERE status = 'PROCESSING' AND type IN ('TOPUP', 'WITHDRAWAL')
+   AND created_at < $1::timestamptz
+   AND (last_reconciled_at IS NULL OR last_reconciled_at < $2::timestamptz)
+ ORDER BY created_at, id
+ LIMIT $3
+`
+
+type ListForReconciliationParams struct {
+	CreatedBefore time.Time
+	CheckedBefore time.Time
+	RowLimit      int32
+}
+
+// Top-ups and withdrawals waiting for the bank's final answer for longer than expected and
+// not checked recently, oldest first (TDR-009 §2 pending_bank_ops).
+func (q *Queries) ListForReconciliation(ctx context.Context, arg ListForReconciliationParams) ([]Transaction, error) {
+	rows, err := q.db.Query(ctx, listForReconciliation, arg.CreatedBefore, arg.CheckedBefore, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transaction
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.Type,
+			&i.Status,
+			&i.InitiatorUserID,
+			&i.SourceWalletID,
+			&i.DestinationWalletID,
+			&i.Amount,
+			&i.Currency,
+			&i.IdempotencyKey,
+			&i.BankReference,
+			&i.BankAccountSnapshot,
+			&i.Note,
+			&i.FailureCode,
+			&i.FailureMessage,
+			&i.LastReconciledAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CompletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listForWallet = `-- name: ListForWallet :many
 (SELECT id, type, status, initiator_user_id, source_wallet_id, destination_wallet_id, amount, currency, idempotency_key, bank_reference, bank_account_snapshot, note, failure_code, failure_message, last_reconciled_at, created_at, updated_at, completed_at FROM transactions t
   WHERE t.source_wallet_id = $2
@@ -271,6 +327,24 @@ func (q *Queries) ListForWallet(ctx context.Context, arg ListForWalletParams) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const markReconciled = `-- name: MarkReconciled :execrows
+UPDATE transactions SET last_reconciled_at = $1::timestamptz WHERE id = $2
+`
+
+type MarkReconciledParams struct {
+	At time.Time
+	ID uuid.UUID
+}
+
+// Bookkeeping only: neither the status nor updated_at change.
+func (q *Queries) MarkReconciled(ctx context.Context, arg MarkReconciledParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markReconciled, arg.At, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const sumOutgoingForDay = `-- name: SumOutgoingForDay :one

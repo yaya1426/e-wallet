@@ -180,6 +180,40 @@ func (s *Service) GetVisible(ctx context.Context, q Querier, txnID, walletID uui
 	return one(queries(q).GetVisibleTransaction(ctx, sqlcgen.GetVisibleTransactionParams{ID: txnID, WalletID: nullUUID(walletID)}))
 }
 
+// ListForReconciliation returns up to limit top-ups and withdrawals still PROCESSING that were
+// created before createdBefore and not reconciled since checkedBefore (never reconciled
+// counts as due), oldest first (TDR-009 §2).
+func (s *Service) ListForReconciliation(ctx context.Context, q Querier, createdBefore, checkedBefore time.Time, limit int) ([]Transaction, error) {
+	rows, err := queries(q).ListForReconciliation(ctx, sqlcgen.ListForReconciliationParams{
+		CreatedBefore: createdBefore, CheckedBefore: checkedBefore, RowLimit: int32(max(0, min(limit, 1<<31-1))),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("transaction: list for reconciliation: %w", err)
+	}
+	out := make([]Transaction, 0, len(rows))
+	for _, row := range rows {
+		txn, err := toTransaction(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, txn)
+	}
+	return out, nil
+}
+
+// MarkReconciled records that reconciliation checked the transaction at `at`. It changes
+// neither the status nor updated_at: it is bookkeeping, not a business change.
+func (s *Service) MarkReconciled(ctx context.Context, q Querier, txnID uuid.UUID, at time.Time) error {
+	n, err := queries(q).MarkReconciled(ctx, sqlcgen.MarkReconciledParams{At: at.Truncate(time.Microsecond), ID: txnID})
+	if err != nil {
+		return fmt.Errorf("transaction: mark reconciled: %w", err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // now is the clock time truncated to PostgreSQL's microsecond precision, so returned
 // values equal later reads.
 func (s *Service) now() time.Time { return s.clock.Now().Truncate(time.Microsecond) }

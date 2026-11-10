@@ -64,3 +64,17 @@ LIMIT @row_limit;
 -- name: GetVisibleTransaction :one
 SELECT * FROM transactions
  WHERE id = @id AND (source_wallet_id = @wallet_id OR destination_wallet_id = @wallet_id);
+
+-- name: ListForReconciliation :many
+-- Top-ups and withdrawals waiting for the bank's final answer for longer than expected and
+-- not checked recently, oldest first (TDR-009 §2 pending_bank_ops).
+SELECT * FROM transactions
+ WHERE status = 'PROCESSING' AND type IN ('TOPUP', 'WITHDRAWAL')
+   AND created_at < @created_before::timestamptz
+   AND (last_reconciled_at IS NULL OR last_reconciled_at < @checked_before::timestamptz)
+ ORDER BY created_at, id
+ LIMIT @row_limit;
+
+-- name: MarkReconciled :execrows
+-- Bookkeeping only: neither the status nor updated_at change.
+UPDATE transactions SET last_reconciled_at = @at::timestamptz WHERE id = @id;

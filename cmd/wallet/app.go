@@ -115,18 +115,20 @@ func reconcile(ctx context.Context, job string, environ map[string]string, stdou
 	if !ok {
 		return exitError
 	}
+	if err := cfg.ValidateBank(); err != nil { // the jobs ask the bank
+		_, _ = fmt.Fprintf(stderr, "wallet: %v\n", err)
+		return exitError
+	}
 	db, _, err := connect(ctx, cfg, log, nil)
 	if err != nil {
 		log.Error("reconcile failed", slog.Any("error", err))
 		return exitError
 	}
 	defer db.Close()
-	var gateway bank.Gateway
-	if cfg.BankBaseURL != "" {
-		if gateway, err = banksim.New(banksim.Config{BaseURL: cfg.BankBaseURL, Timeout: cfg.BankHTTPTimeout}, log, nil); err != nil {
-			log.Error("reconcile failed", slog.Any("error", err))
-			return exitError
-		}
+	gateway, err := banksim.New(banksim.Config{BaseURL: cfg.BankBaseURL, Timeout: cfg.BankHTTPTimeout}, log, nil)
+	if err != nil {
+		log.Error("reconcile failed", slog.Any("error", err))
+		return exitError
 	}
 	a, err := newAPI(db, cfg, clock.System{}, log, nil, 0, gateway)
 	if err != nil {
@@ -272,8 +274,15 @@ type observer interface {
 }
 
 // reconJobs returns the reconciliation jobs to register (TDR-009 §2). A variable so tests can
-// register test jobs; the business jobs come with T022/T023.
-var reconJobs = func(*api, config.Wallet) []reconciliation.Job { return nil }
+// register test jobs instead.
+var reconJobs = func(d reconciliation.PendingBankOpsDeps, cfg config.Wallet) []reconciliation.Job {
+	return []reconciliation.Job{
+		reconciliation.PendingBankOps(d, reconciliation.PendingBankOpsConfig{
+			Interval: cfg.ReconPendingInterval, MinAge: cfg.ReconPendingMinAge,
+			Recheck: cfg.ReconPendingRecheck, Batch: cfg.ReconPendingBatch,
+		}),
+	}
+}
 
 // newAPI wires the modules. obs (the metrics) may be nil. bcryptCost 0 means
 // identity.DefaultBcryptCost (tests pass a lower cost to stay fast). gateway is the bank (the
@@ -327,7 +336,10 @@ func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logge
 		webhook:     webhook.NewHandler(inboxSvc, []byte(cfg.BankWebhookSecret), clk, log, obs),
 	}
 	a.recon = reconciliation.NewScheduler(db, clk, log, obs)
-	for _, j := range reconJobs(a, cfg) {
+	for _, j := range reconJobs(reconciliation.PendingBankOpsDeps{
+		DB: db, Transactions: transactionSvc, Payment: paymentSvc, Discrepancies: discrepancySvc,
+		Bank: gateway, Clock: clk, Log: log,
+	}, cfg) {
 		a.recon.Register(j)
 	}
 	return a, nil

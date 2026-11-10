@@ -36,7 +36,8 @@ func TestConfig_LoadWallet_Defaults(t *testing.T) {
 
 		InboxEnabled: true, InboxWorkers: 4, InboxMaxAttempts: 10,
 
-		ReconEnabled: true,
+		ReconEnabled: true, ReconPendingInterval: time.Minute, ReconPendingMinAge: 10 * time.Minute,
+		ReconPendingRecheck: 5 * time.Minute, ReconPendingBatch: 100,
 
 		LimitTopUpMin: 1000, LimitTopUpMax: 3_000_000,
 		LimitWithdrawalMin: 1000, LimitWithdrawalMax: 3_000_000,
@@ -226,6 +227,28 @@ func TestConfig_ReconEnabled(t *testing.T) {
 	assert.False(t, cfg.ReconEnabled)
 	_, err = LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL, "RECON_ENABLED": "sometimes"})
 	assert.ErrorContains(t, err, "RECON_ENABLED")
+}
+
+// T022 AC-9: the pending_bank_ops settings.
+func TestConfig_ReconPending(t *testing.T) {
+	cfg, err := LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL, "RECON_PENDING_INTERVAL": "10s",
+		"RECON_PENDING_MIN_AGE": "30s", "RECON_PENDING_RECHECK": "20s", "RECON_PENDING_BATCH": "1000"})
+	require.NoError(t, err)
+	assert.Equal(t, 10*time.Second, cfg.ReconPendingInterval)
+	assert.Equal(t, 30*time.Second, cfg.ReconPendingMinAge)
+	assert.Equal(t, 20*time.Second, cfg.ReconPendingRecheck)
+	assert.Equal(t, 1000, cfg.ReconPendingBatch)
+
+	for _, tt := range []struct{ name, value string }{
+		{"RECON_PENDING_INTERVAL", "0s"}, {"RECON_PENDING_INTERVAL", "soon"}, {"RECON_PENDING_MIN_AGE", "-1m"},
+		{"RECON_PENDING_RECHECK", "0s"}, {"RECON_PENDING_BATCH", "0"}, {"RECON_PENDING_BATCH", "1001"}, {"RECON_PENDING_BATCH", "many"},
+	} {
+		_, err := LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL, tt.name: tt.value})
+		assert.ErrorContains(t, err, tt.name, tt.value)
+	}
+	cfg, err = LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL})
+	require.NoError(t, err)
+	assert.ErrorContains(t, cfg.ValidateBank(), "BANK_BASE_URL is required")
 }
 
 // banksimEnv is the smallest valid banksim environment.
