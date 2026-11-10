@@ -56,6 +56,22 @@ func TestInternal_OpsHealth(t *testing.T) {
 	body = get()
 	assert.Equal(t, "warning", body["status"])
 
+	// After a restart, an old last run is not late until the new instance had 3 intervals.
+	_, err = f.db.Pool().Exec(context.Background(), `DELETE FROM job_runs`)
+	require.NoError(t, err)
+	for _, job := range []string{"pending_bank_ops", "dead_outbox", "stuck_alert"} {
+		_, err = f.db.Pool().Exec(context.Background(), `INSERT INTO job_runs (id, job_name, started_at, finished_at, status)
+			VALUES (gen_random_uuid(), $1, $2, $2, 'SUCCESS')`, job, clk.Now().Add(-2*time.Hour))
+		require.NoError(t, err)
+	}
+	f.api.ops.started = clk.Now() // a fresh deploy
+	body = get()
+	assert.Equal(t, "ok", body["status"], "old runs, but the instance just started")
+	f.api.ops.started = clk.Now().Add(-time.Hour)
+	body = get()
+	assert.Equal(t, "warning", body["status"], "up for an hour without a run")
+	assert.Equal(t, true, body["jobs"].([]any)[2].(map[string]any)["late"])
+
 	// An open WARNING discrepancy keeps warning; a CRITICAL one → critical.
 	svc := discrepancy.NewService(f.db.Pool(), clk, nil)
 	record := func(sev discrepancy.Severity, kind discrepancy.Kind) {
