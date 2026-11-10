@@ -56,3 +56,18 @@ func (s *Service) Resolve(ctx context.Context, q Querier, eventID uuid.UUID, not
 	}
 	return nil
 }
+
+// Counts are the unfinished and the DEAD events.
+type Counts struct {
+	Pending int64 // PENDING or PROCESSING
+	Dead    int64
+}
+
+// Counts counts the outbox events still to deliver and the DEAD ones (ops health, T028).
+func (s *Service) Counts(ctx context.Context) (Counts, error) {
+	row, err := queries(s.db).Counts(ctx)
+	if err != nil {
+		return Counts{}, fmt.Errorf("outbox: counts: %w", err)
+	}
+	return Counts{Pending: row.Pending, Dead: row.Dead}, nil
+}

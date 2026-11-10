@@ -43,3 +43,9 @@ UPDATE inbox_events
 UPDATE inbox_events
    SET status = 'DEAD', last_error = @last_error::text, locked_by = NULL, locked_until = NULL
  WHERE id = @id AND status = 'PROCESSING' AND attempts = @attempts;
+
+-- name: Counts :one
+-- For the ops health summary (T028).
+SELECT count(*) FILTER (WHERE status IN ('PENDING', 'PROCESSING'))::bigint AS pending,
+       count(*) FILTER (WHERE status = 'DEAD')::bigint AS dead
+  FROM inbox_events;

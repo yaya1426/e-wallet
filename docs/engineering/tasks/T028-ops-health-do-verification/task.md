@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T028 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-10 |
 | Branch       | `task/T028-ops-health-do-verification` |
 | Depends on   | T024–T027 |
@@ -53,11 +53,11 @@ interval (or missing while `RECON_ENABLED`); else `ok`. Counts come from each ow
 Prometheus/Grafana, managed DB (decided: keep dev DB), alert channels.
 
 ## Acceptance Criteria
-- [ ] AC-1 — Health endpoint returns the counts and the status rules above (integration test covering ok, warning, critical); needs the key.
-- [ ] AC-2 — e2e: new refresh/logout and password-reset scenarios pass locally and in CI.
-- [ ] AC-3 — Remote mode skips DB checks cleanly; the suite runs against the DO URL and passes (results in implementation.md).
-- [ ] AC-4 — Uptime check exists on DO (doctl output recorded).
-- [ ] AC-5 — Manual guide updated (refresh, logout, password reset, operator API, DO notes) and verified locally.
+- [x] AC-1 — Health endpoint returns the counts and the status rules above (integration test covering ok, warning, critical); needs the key.
+- [x] AC-2 — e2e: new refresh/logout and password-reset scenarios pass locally and in CI.
+- [x] AC-3 — Remote mode skips DB checks cleanly; the suite runs against the DO URL and passes (results in implementation.md).
+- [x] AC-4 — Uptime check exists on DO (doctl output recorded).
+- [x] AC-5 — Manual guide updated (refresh, logout, password reset, operator API, DO notes) and verified locally.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -83,3 +83,5 @@ Prometheus/Grafana, managed DB (decided: keep dev DB), alert channels.
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-10 | Ready | Planned; all questions answered |
+| 2026-11-10 | Approved | Implemented; review round 1: 1 Minor (public /metrics, follow-up) |
+| 2026-11-10 | Done | Finalized — PR opened |

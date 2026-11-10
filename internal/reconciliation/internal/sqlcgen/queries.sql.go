@@ -42,6 +42,39 @@ func (q *Queries) InsertJobRun(ctx context.Context, arg InsertJobRunParams) erro
 	return err
 }
 
+const lastRuns = `-- name: LastRuns :many
+SELECT DISTINCT ON (job_name) job_name, status, finished_at
+  FROM job_runs
+ ORDER BY job_name, finished_at DESC
+`
+
+type LastRunsRow struct {
+	JobName    string
+	Status     string
+	FinishedAt time.Time
+}
+
+// The latest run of each job, for the ops health summary (T028).
+func (q *Queries) LastRuns(ctx context.Context) ([]LastRunsRow, error) {
+	rows, err := q.db.Query(ctx, lastRuns)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LastRunsRow
+	for rows.Next() {
+		var i LastRunsRow
+		if err := rows.Scan(&i.JobName, &i.Status, &i.FinishedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const tryAdvisoryLock = `-- name: TryAdvisoryLock :one
 SELECT pg_try_advisory_lock($1::bigint) AS acquired
 `

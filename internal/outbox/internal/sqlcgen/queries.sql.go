@@ -89,6 +89,25 @@ func (q *Queries) ClaimEvents(ctx context.Context, arg ClaimEventsParams) ([]Cla
 	return items, nil
 }
 
+const counts = `-- name: Counts :one
+SELECT count(*) FILTER (WHERE status IN ('PENDING', 'PROCESSING'))::bigint AS pending,
+       count(*) FILTER (WHERE status = 'DEAD')::bigint AS dead
+  FROM outbox_events
+`
+
+type CountsRow struct {
+	Pending int64
+	Dead    int64
+}
+
+// For the ops health summary (T028).
+func (q *Queries) Counts(ctx context.Context) (CountsRow, error) {
+	row := q.db.QueryRow(ctx, counts)
+	var i CountsRow
+	err := row.Scan(&i.Pending, &i.Dead)
+	return i, err
+}
+
 const insertEvent = `-- name: InsertEvent :exec
 INSERT INTO outbox_events (id, aggregate_type, aggregate_id, event_type, payload, status,
                            attempts, next_attempt_at, created_at)

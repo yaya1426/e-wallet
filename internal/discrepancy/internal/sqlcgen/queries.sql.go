@@ -12,6 +12,35 @@ import (
 	"github.com/google/uuid"
 )
 
+const countOpenBySeverity = `-- name: CountOpenBySeverity :many
+SELECT severity, count(*)::bigint AS open FROM reconciliation_discrepancies WHERE status = 'OPEN' GROUP BY severity
+`
+
+type CountOpenBySeverityRow struct {
+	Severity string
+	Open     int64
+}
+
+func (q *Queries) CountOpenBySeverity(ctx context.Context) ([]CountOpenBySeverityRow, error) {
+	rows, err := q.db.Query(ctx, countOpenBySeverity)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountOpenBySeverityRow
+	for rows.Next() {
+		var i CountOpenBySeverityRow
+		if err := rows.Scan(&i.Severity, &i.Open); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDiscrepancy = `-- name: GetDiscrepancy :one
 SELECT id, kind, severity, transaction_id, details, status, created_at, resolved_at, resolution_note
   FROM reconciliation_discrepancies WHERE id = $1

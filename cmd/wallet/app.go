@@ -273,6 +273,7 @@ type api struct {
 	webhook     *webhook.Handler
 	recon       *reconciliation.Scheduler // run by serve when RECON_ENABLED, or once by `reconcile`
 	operator    operatorRoutes            // /internal/v1/*, mounted when internalKey is set
+	ops         *opsHealth                // GET /internal/v1/health/ops
 	internalKey string
 }
 
@@ -357,6 +358,9 @@ func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logge
 	a.internalKey = cfg.InternalAPIKey
 	a.operator = operatorRoutes{discrepancies: discrepancy.NewHandler(discrepancySvc, log), wallets: a.wallet}
 	a.recon = reconciliation.NewScheduler(db, clk, log, obs)
+	a.ops = &opsHealth{pool: db.Pool(), discrepancies: discrepancySvc, outbox: outboxSvc, inbox: inboxSvc,
+		transactions: transactionSvc, recon: a.recon, reconEnabled: cfg.ReconEnabled, stuckAge: cfg.ReconStuckAge,
+		clock: clk, started: clk.Now(), log: log}
 	for _, j := range reconJobs(reconciliation.Deps{
 		DB: db, Transactions: transactionSvc, Payment: paymentSvc, Discrepancies: discrepancySvc,
 		Outbox: outboxSvc, Bank: gateway, Clock: clk, Log: log, Stuck: obs,
@@ -389,6 +393,7 @@ func (a *api) routes(mux *http.ServeMux) {
 		a.operator.discrepancies.InternalRoutes(mux, requireKey)
 		a.operator.wallets.InternalRoutes(mux, requireKey)
 		a.identity.InternalRoutes(mux, requireKey)
+		mux.Handle("GET /internal/v1/health/ops", requireKey(http.HandlerFunc(a.ops.serve)))
 	}
 }
 
