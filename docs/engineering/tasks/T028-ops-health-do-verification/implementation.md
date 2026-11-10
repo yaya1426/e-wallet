@@ -58,6 +58,11 @@ The health endpoint itself is checked live after this PR deploys.
 | `make ci` (after rebasing on T027) | ✅ 0 issues |
 | `make e2e` (local) | ✅ |
 
+## Fix after deploy (2026-11-10)
+After T028 was deployed, the live endpoint reported `warning`: `stuck_alert` was "late", with its last run 57 minutes old. In fact the app had been redeployed about six times that hour, and each start delays a job's first tick by one interval (15 minutes for `stuck_alert`), so it never got to run.
+
+The rule now measures lateness from the later of the job's last run and this instance's start. `TestInternal_OpsHealth` covers both cases: an old run just after a restart → ok; an instance up for an hour with no run → late.
+
 ## Deviations
 - The remote run covers a subset of the scenarios because of the production registration limit (explained above). Every MVP flow is covered: top-up, P2P, withdrawal with refund, sessions and password reset.
 - The e2e login retry on 429 is an addition, so that runs from one IP are reliable.

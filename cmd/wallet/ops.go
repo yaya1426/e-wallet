@@ -77,7 +77,8 @@ func (o *opsHealth) serve(w http.ResponseWriter, r *http.Request) {
 // summary collects the counts and derives the status:
 //   - critical: an open CRITICAL discrepancy, or a DEAD outbox/inbox event;
 //   - warning: an open WARNING discrepancy, a stuck transaction, or a job whose last run
-//     FAILED or is late (none within 3 intervals while reconciliation runs here);
+//     FAILED or is late (no run within 3 intervals of its last run or of this instance's
+//     start, whichever is later, while reconciliation runs here);
 //   - ok otherwise.
 func (o *opsHealth) summary(ctx context.Context) (opsBody, error) {
 	open, err := o.discrepancies.CountOpen(ctx)
@@ -117,15 +118,19 @@ func (o *opsHealth) summary(ctx context.Context) (opsBody, error) {
 	for _, j := range o.recon.Registered() {
 		job := opsJob{Name: j.Name}
 		limit := staleRunFactor * j.Interval
+		// A job is late when it had 3 intervals to run, counted from its last run or from this
+		// instance's start, whichever is later: right after a (re)deploy the first tick is
+		// still one interval away, so an older last run is not a sign of trouble.
+		since := o.started
 		if run, ok := runs[j.Name]; ok {
 			status, finished := run.Status, run.FinishedAt.UTC()
 			job.LastStatus, job.LastFinishedAt = &status, &finished
-			job.Late = o.reconEnabled && now.Sub(run.FinishedAt) > limit
 			jobTrouble = jobTrouble || status == reconciliation.StatusFailed
-		} else {
-			// Never ran: late only once this instance has been up long enough to have run it.
-			job.Late = o.reconEnabled && now.Sub(o.started) > limit
+			if run.FinishedAt.After(since) {
+				since = run.FinishedAt
+			}
 		}
+		job.Late = o.reconEnabled && now.Sub(since) > limit
 		jobTrouble = jobTrouble || job.Late
 		body.Jobs = append(body.Jobs, job)
 	}
