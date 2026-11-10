@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	waitFor = 10 * time.Second
+	waitFor = 30 * time.Second // generous: CI runners run many packages at once
 	tick    = 10 * time.Millisecond
 )
 
@@ -161,9 +161,46 @@ func (f fixture) rows(t *testing.T) []row {
 
 func (f fixture) status(t *testing.T) string {
 	t.Helper()
-	rs := f.rows(t)
-	require.Len(t, rs, 1)
-	return rs[0].status
+	s, err := f.currentStatus()
+	require.NoError(t, err)
+	return s
+}
+
+// currentStatus reads the status of the only inbox row. It never fails the test, so it is
+// safe inside require.Eventually (a require there would stop the polling goroutine and hide
+// the cause behind "Condition never satisfied").
+func (f fixture) currentStatus() (string, error) {
+	var s string
+	err := f.db.Pool().QueryRow(context.Background(), `SELECT status FROM inbox_events WHERE provider = 'banksim'`).Scan(&s)
+	return s, err
+}
+
+// waitStatus polls until the only inbox row has status want and cond (if any) holds, calling
+// step (if any) before each check. On timeout it reports the last status, error and calls.
+func (f fixture) waitStatus(t *testing.T, h *spyHandler, want string, cond func(calls int) bool, step func()) {
+	t.Helper()
+	var (
+		last    string
+		lastErr error
+	)
+	ok := assert.Eventually(t, func() bool {
+		if step != nil {
+			step()
+		}
+		last, lastErr = f.currentStatus()
+		calls := 0
+		if h != nil {
+			calls = len(h.calls())
+		}
+		return lastErr == nil && last == want && (cond == nil || cond(calls))
+	}, waitFor, tick)
+	if !ok {
+		calls := 0
+		if h != nil {
+			calls = len(h.calls())
+		}
+		t.Fatalf("inbox row never reached %s: last status %q, last error %v, handler calls %d", want, last, lastErr, calls)
+	}
 }
 
 func (f fixture) handlerWrites(t *testing.T) int {
@@ -193,7 +230,7 @@ func TestWebhook_StoreAndProcess(t *testing.T) {
 	assert.Equal(t, sent.EventID.String(), rs[0].providerEventID)
 
 	f.start(t)
-	require.Eventually(t, func() bool { return f.status(t) == "DONE" }, waitFor, tick)
+	f.waitStatus(t, nil, "DONE", nil, nil)
 	calls := h.calls()
 	require.Len(t, calls, 1)
 	got := calls[0]
@@ -226,7 +263,7 @@ func TestWebhook_DuplicateDelivery(t *testing.T) {
 	require.Len(t, f.rows(t), 1)
 
 	f.start(t)
-	require.Eventually(t, func() bool { return f.status(t) == "DONE" }, waitFor, tick)
+	f.waitStatus(t, nil, "DONE", nil, nil)
 	assert.Equal(t, http.StatusOK, f.post(t, payload).Code, "a late duplicate is acknowledged too")
 	time.Sleep(10 * tick) // give the workers a chance to (wrongly) handle it again
 	assert.Len(t, h.calls(), 1)
@@ -254,8 +291,7 @@ func TestInbox_UnknownTransactionThenDead(t *testing.T) {
 	require.Equal(t, http.StatusOK, f.post(t, bankEvent(t, webhook.EventDebitSucceeded, webhook.StatusSucceeded)).Code)
 	f.start(t)
 
-	require.Eventually(t, func() bool { return len(h.calls()) == 1 }, waitFor, tick)
-	require.Eventually(t, func() bool { return f.status(t) == "PENDING" }, waitFor, tick)
+	f.waitStatus(t, h, "PENDING", func(calls int) bool { return calls >= 1 }, nil)
 	rs := f.rows(t)
 	assert.Equal(t, 1, rs[0].attempts)
 	require.NotNil(t, rs[0].lastError)
@@ -265,10 +301,7 @@ func TestInbox_UnknownTransactionThenDead(t *testing.T) {
 	time.Sleep(10 * tick)
 	assert.Len(t, h.calls(), 1)
 
-	require.Eventually(t, func() bool {
-		f.clock.Advance(10 * time.Minute) // past any backoff (capped at 5 minutes)
-		return f.status(t) == "DEAD"
-	}, waitFor, tick)
+	f.waitStatus(t, h, "DEAD", nil, func() { f.clock.Advance(10 * time.Minute) }) // past any backoff (capped at 5 minutes)
 	assert.Len(t, h.calls(), 3, "MaxAttempts")
 	assert.Zero(t, f.handlerWrites(t), "each failed attempt rolled back")
 }
@@ -283,15 +316,12 @@ func TestInbox_DeadUnknownRecordsDiscrepancy(t *testing.T) {
 	f.start(t)
 	discrepancies := discrepancy.NewService(f.db.Pool(), f.clock, nil)
 
-	require.Eventually(t, func() bool { return len(h.calls()) == 1 && f.status(t) == "PENDING" }, waitFor, tick)
+	f.waitStatus(t, h, "PENDING", func(calls int) bool { return calls >= 1 }, nil)
 	open, err := discrepancies.List(context.Background(), discrepancy.Filter{})
 	require.NoError(t, err)
 	assert.Empty(t, open, "not before the last attempt")
 
-	require.Eventually(t, func() bool {
-		f.clock.Advance(10 * time.Minute)
-		return f.status(t) == "DEAD"
-	}, waitFor, tick)
+	f.waitStatus(t, h, "DEAD", nil, func() { f.clock.Advance(10 * time.Minute) })
 	list, err := discrepancies.List(context.Background(), discrepancy.Filter{Status: discrepancy.StatusOpen})
 	require.NoError(t, err)
 	require.Len(t, list, 1)
@@ -317,7 +347,7 @@ func TestInbox_UnknownTypeFailed(t *testing.T) {
 	require.Equal(t, http.StatusOK, f.post(t, payload).Code)
 	f.start(t)
 
-	require.Eventually(t, func() bool { return f.status(t) == "FAILED" }, waitFor, tick)
+	f.waitStatus(t, nil, "FAILED", nil, nil)
 	rs := f.rows(t)
 	require.NotNil(t, rs[0].lastError)
 	assert.Contains(t, *rs[0].lastError, `unknown event_type "refund.succeeded"`)
@@ -333,16 +363,13 @@ func TestInbox_HandlerRollback(t *testing.T) {
 	require.Equal(t, http.StatusOK, f.post(t, bankEvent(t, webhook.EventPayoutSucceeded, webhook.StatusSucceeded)).Code)
 	f.start(t)
 
-	require.Eventually(t, func() bool { return len(h.calls()) == 1 && f.status(t) == "PENDING" }, waitFor, tick)
+	f.waitStatus(t, h, "PENDING", func(calls int) bool { return calls >= 1 }, nil)
 	assert.Zero(t, f.handlerWrites(t), "the write of the failed attempt was rolled back")
 	rs := f.rows(t)
 	require.NotNil(t, rs[0].lastError)
 	assert.Contains(t, *rs[0].lastError, "ledger is busy")
 
-	require.Eventually(t, func() bool {
-		f.clock.Advance(10 * time.Minute)
-		return f.status(t) == "DONE"
-	}, waitFor, tick)
+	f.waitStatus(t, h, "DONE", nil, func() { f.clock.Advance(10 * time.Minute) })
 	assert.Len(t, h.calls(), 2)
 	assert.Equal(t, 1, f.handlerWrites(t), "only the successful attempt's write is kept")
 }

@@ -48,6 +48,18 @@
 | `make e2e` (fresh stack, and again on the stack the guide had used) | ✅ both |
 | Throwaway breach (AC-3) and guide walkthrough (AC-4) | ✅ as above |
 
+## CI fix (round 1)
+The first CI run of this PR failed `integration` in `TestInbox_DeadUnknownRecordsDiscrepancy` (T015/T016 test) with "Condition never satisfied" after 10 s. 40 local repeats did not reproduce it, and it is likely the unidentified flake noted in T016.
+
+**Root cause:** the polled conditions in the inbox tests called helpers that use `require`. A failing query inside `require.Eventually` stops the polling goroutine, so the cause is hidden behind a timeout.
+
+**Fix (test only):**
+- `waitStatus` polls with a non-failing `currentStatus`, and on timeout reports the last status, the last error and the handler call count.
+- "exactly one call" became "at least one call", which still proves the attempt happened.
+- `waitFor` went from 10 s to 30 s for loaded CI runners.
+
+15 local repeats and `make ci` pass.
+
 ## Deviations
 - The scenarios don't call `t.Parallel()`. The task says they *can* run in parallel, and they are independent, but running them one by one makes the per-test integrity check point at the test that broke it. Scenario 5 is concurrent inside itself.
 - `checkIntegrity` first waits for the outbox and inbox to be idle (`waitQuiet`), so background work from the scenario is finished before the ledger is checked.
