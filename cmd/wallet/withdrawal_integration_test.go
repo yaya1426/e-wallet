@@ -25,7 +25,7 @@ import (
 func newWithdrawalFixture(t *testing.T) apiFixture {
 	t.Helper()
 	f := newAPIFixture(t)
-	t.Cleanup(func() { paymenttest.AssertInTransit(t, f.db) })
+	t.Cleanup(func() { paymenttest.AssertInTransit(t, f.db.Pool()) })
 	return f
 }
 

@@ -50,6 +50,6 @@ Every unit of work is a task folder `TNNN-<slug>/` (e.g. `T001-project-bootstrap
 | [T017](T017-top-up-request/task.md) | Top-up request | Done |
 | [T018](T018-withdrawal-request/task.md) | Withdrawal request | Done |
 | [T019](T019-withdrawal-outcome/task.md) | Withdrawal outcome | Done |
-| [T020](T020-e2e-manual-guide/task.md) | End-to-end suite + manual test guide | Ready |
+| [T020](T020-e2e-manual-guide/task.md) | End-to-end suite + manual test guide | Done |
 
 Phase-1 order and dependencies: see the [roadmap](../roadmap.md). Phase-2 tasks are planned after phase 1.

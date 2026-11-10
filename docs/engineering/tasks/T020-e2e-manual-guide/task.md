@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T020 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-05 |
 | Branch       | `task/T020-e2e-manual-guide` |
 | Depends on   | T009, T010, T014, T019 |
@@ -70,11 +70,11 @@ None (uses the existing ones).
 Fault scenarios `0003`–`0009`, crash tests, load tests (phase 2).
 
 ## Acceptance Criteria
-- [ ] AC-1 — `make up && make e2e` passes locally with scenarios 1–8.
-- [ ] AC-2 — The CI `smoke` job runs the same suite on the PR and passes.
-- [ ] AC-3 — A failing integrity check fails the test that caused it (proved once by a throwaway raw `UPDATE` in a local run, recorded in `implementation.md`).
-- [ ] AC-4 — Following `manual-testing.md` from a clean `make down && make up` gives the documented answers at every step (done by the implementer, recorded in `implementation.md`).
-- [ ] AC-5 — Every env var the wallet and banksim need is set in compose and documented in `.env.example`; dev secrets are clearly marked as such.
+- [x] AC-1 — `make up && make e2e` passes locally with scenarios 1–8.
+- [x] AC-2 — The CI `smoke` job runs the same suite on the PR and passes.
+- [x] AC-3 — A failing integrity check fails the test that caused it (proved once by a throwaway raw `UPDATE` in a local run, recorded in `implementation.md`).
+- [x] AC-4 — Following `manual-testing.md` from a clean `make down && make up` gives the documented answers at every step (done by the implementer, recorded in `implementation.md`).
+- [x] AC-5 — Every env var the wallet and banksim need is set in compose and documented in `.env.example`; dev secrets are clearly marked as such.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -98,3 +98,7 @@ Fault scenarios `0003`–`0009`, crash tests, load tests (phase 2).
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-05 | Ready | Planned with the phase-1 roadmap; all questions answered |
+| 2026-11-09 | In Progress | Implementation started (on top of T019, PR #21) |
+| 2026-11-09 | In Review | Implemented; verification passed (implementation.md) |
+| 2026-11-09 | Approved | Review round 1: no findings (review.md) |
+| 2026-11-09 | Done | Finalized — PR opened |

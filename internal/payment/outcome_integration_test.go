@@ -57,8 +57,8 @@ func setup(t *testing.T) fixture {
 	migrator, err := database.NewMigrator(db.Pool(), url)
 	require.NoError(t, err)
 	require.NoError(t, migrator.Up(ctx))
-	t.Cleanup(func() { ledgertest.AssertIntegrity(t, db) })  // AC-11
-	t.Cleanup(func() { paymenttest.AssertInTransit(t, db) }) // T018 AC-8
+	t.Cleanup(func() { ledgertest.AssertIntegrity(t, db) })         // AC-11
+	t.Cleanup(func() { paymenttest.AssertInTransit(t, db.Pool()) }) // T018 AC-8
 
 	clk := clocktest.New(time.Date(2026, 11, 9, 10, 0, 0, 0, time.UTC))
 	f := fixture{db: db, clock: clk, ledger: ledger.NewService(db, clk), txns: transaction.NewService(clk)}

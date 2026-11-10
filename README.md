@@ -40,6 +40,13 @@ make down
 To run the wallet outside Docker against the compose database, use the values in
 `configs/.env.example` and run `go run ./cmd/wallet serve`.
 
+## Try it
+
+[`docs/engineering/manual-testing.md`](docs/engineering/manual-testing.md) walks through
+top-up, P2P and withdrawal against the bank simulator with `curl` and `jq`. The same scenarios
+run automatically with `make up && make e2e` (CI runs them in the `smoke` job). If PostgreSQL
+is not on host port 5432, set `E2E_DATABASE_URL` for `make e2e`.
+
 ## Commands
 
 | Command | Purpose |
