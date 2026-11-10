@@ -271,16 +271,19 @@ type observer interface {
 	outbox.Observer
 	webhook.Observer
 	reconciliation.Observer
+	reconciliation.StuckObserver
 }
 
 // reconJobs returns the reconciliation jobs to register (TDR-009 §2). A variable so tests can
 // register test jobs instead.
-var reconJobs = func(d reconciliation.PendingBankOpsDeps, cfg config.Wallet) []reconciliation.Job {
+var reconJobs = func(d reconciliation.Deps, cfg config.Wallet) []reconciliation.Job {
 	return []reconciliation.Job{
 		reconciliation.PendingBankOps(d, reconciliation.PendingBankOpsConfig{
 			Interval: cfg.ReconPendingInterval, MinAge: cfg.ReconPendingMinAge,
 			Recheck: cfg.ReconPendingRecheck, Batch: cfg.ReconPendingBatch,
 		}),
+		reconciliation.DeadOutbox(d, reconciliation.DeadOutboxConfig{Interval: cfg.ReconDeadInterval, Batch: cfg.ReconDeadBatch}),
+		reconciliation.StuckAlert(d, reconciliation.StuckAlertConfig{Interval: cfg.ReconStuckInterval, Age: cfg.ReconStuckAge}),
 	}
 }
 
@@ -336,9 +339,9 @@ func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logge
 		webhook:     webhook.NewHandler(inboxSvc, []byte(cfg.BankWebhookSecret), clk, log, obs),
 	}
 	a.recon = reconciliation.NewScheduler(db, clk, log, obs)
-	for _, j := range reconJobs(reconciliation.PendingBankOpsDeps{
+	for _, j := range reconJobs(reconciliation.Deps{
 		DB: db, Transactions: transactionSvc, Payment: paymentSvc, Discrepancies: discrepancySvc,
-		Bank: gateway, Clock: clk, Log: log,
+		Outbox: outboxSvc, Bank: gateway, Clock: clk, Log: log, Stuck: obs,
 	}, cfg) {
 		a.recon.Register(j)
 	}

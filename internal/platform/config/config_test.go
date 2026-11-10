@@ -38,6 +38,7 @@ func TestConfig_LoadWallet_Defaults(t *testing.T) {
 
 		ReconEnabled: true, ReconPendingInterval: time.Minute, ReconPendingMinAge: 10 * time.Minute,
 		ReconPendingRecheck: 5 * time.Minute, ReconPendingBatch: 100,
+		ReconDeadInterval: 5 * time.Minute, ReconDeadBatch: 100, ReconStuckInterval: 15 * time.Minute, ReconStuckAge: 24 * time.Hour,
 
 		LimitTopUpMin: 1000, LimitTopUpMax: 3_000_000,
 		LimitWithdrawalMin: 1000, LimitWithdrawalMax: 3_000_000,
@@ -249,6 +250,24 @@ func TestConfig_ReconPending(t *testing.T) {
 	cfg, err = LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL})
 	require.NoError(t, err)
 	assert.ErrorContains(t, cfg.ValidateBank(), "BANK_BASE_URL is required")
+}
+
+// T023 AC-10: the dead_outbox and stuck_alert settings.
+func TestConfig_ReconDeadStuck(t *testing.T) {
+	cfg, err := LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL, "RECON_DEAD_INTERVAL": "30s",
+		"RECON_DEAD_BATCH": "5", "RECON_STUCK_INTERVAL": "1m", "RECON_STUCK_AGE": "2h"})
+	require.NoError(t, err)
+	assert.Equal(t, 30*time.Second, cfg.ReconDeadInterval)
+	assert.Equal(t, 5, cfg.ReconDeadBatch)
+	assert.Equal(t, time.Minute, cfg.ReconStuckInterval)
+	assert.Equal(t, 2*time.Hour, cfg.ReconStuckAge)
+	for _, tt := range []struct{ name, value string }{
+		{"RECON_DEAD_INTERVAL", "0s"}, {"RECON_DEAD_BATCH", "0"}, {"RECON_DEAD_BATCH", "1001"},
+		{"RECON_STUCK_INTERVAL", "-1s"}, {"RECON_STUCK_AGE", "0s"}, {"RECON_STUCK_AGE", "forever"},
+	} {
+		_, err := LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL, tt.name: tt.value})
+		assert.ErrorContains(t, err, tt.name, tt.value)
+	}
 }
 
 // banksimEnv is the smallest valid banksim environment.

@@ -29,6 +29,7 @@ type Metrics struct {
 	reconRuns       *prometheus.CounterVec
 	reconDuration   *prometheus.HistogramVec
 	reconItems      *prometheus.CounterVec
+	reconStuck      *prometheus.GaugeVec
 }
 
 // New creates the registry and registers all collectors.
@@ -100,8 +101,12 @@ func New() *Metrics {
 		Name: "recon_items_total",
 		Help: "Items handled by reconciliation jobs, by job and kind (checked, fixed).",
 	}, []string{"job", "kind"})
+	m.reconStuck = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "recon_stuck_transactions",
+		Help: "Top-ups and withdrawals not final after RECON_STUCK_AGE, by type (set by stuck_alert; alert on > 0).",
+	}, []string{"type"})
 	m.registry.MustRegister(
-		m.reconRuns, m.reconDuration, m.reconItems,
+		m.reconRuns, m.reconDuration, m.reconItems, m.reconStuck,
 		m.bankCalls,
 		m.queueJobs, m.queueClaimed, m.queueDuration,
 		m.outboxPending, m.outboxOldestAge, m.outboxDead, m.webhooks,
@@ -181,6 +186,11 @@ func (m *Metrics) ObserveReconRun(job, status string, duration time.Duration) {
 func (m *Metrics) ObserveReconItems(job string, checked, fixed int) {
 	m.reconItems.WithLabelValues(job, "checked").Add(float64(checked))
 	m.reconItems.WithLabelValues(job, "fixed").Add(float64(fixed))
+}
+
+// ObserveStuckTransactions sets the stuck-transaction gauge of a type (reconciliation.StuckObserver).
+func (m *Metrics) ObserveStuckTransactions(txnType string, n int64) {
+	m.reconStuck.WithLabelValues(txnType).Set(float64(n))
 }
 
 // ObserveBankCall records one bank gateway call (banksim.Observer).

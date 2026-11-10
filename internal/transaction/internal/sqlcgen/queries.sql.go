@@ -12,6 +12,39 @@ import (
 	"github.com/google/uuid"
 )
 
+const countStuck = `-- name: CountStuck :many
+SELECT type, count(*)::bigint AS stuck
+  FROM transactions
+ WHERE status IN ('PENDING', 'PROCESSING') AND type IN ('TOPUP', 'WITHDRAWAL')
+   AND created_at < $1::timestamptz
+ GROUP BY type
+`
+
+type CountStuckRow struct {
+	Type  string
+	Stuck int64
+}
+
+func (q *Queries) CountStuck(ctx context.Context, createdBefore time.Time) ([]CountStuckRow, error) {
+	rows, err := q.db.Query(ctx, countStuck, createdBefore)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountStuckRow
+	for rows.Next() {
+		var i CountStuckRow
+		if err := rows.Scan(&i.Type, &i.Stuck); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createTransaction = `-- name: CreateTransaction :one
 INSERT INTO transactions (id, type, status, initiator_user_id, source_wallet_id, destination_wallet_id,
                           amount, currency, idempotency_key, bank_account_snapshot, note,
@@ -292,6 +325,59 @@ func (q *Queries) ListForWallet(ctx context.Context, arg ListForWalletParams) ([
 		arg.CursorTime,
 		arg.CursorID,
 	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transaction
+	for rows.Next() {
+		var i Transaction
+		if err := rows.Scan(
+			&i.ID,
+			&i.Type,
+			&i.Status,
+			&i.InitiatorUserID,
+			&i.SourceWalletID,
+			&i.DestinationWalletID,
+			&i.Amount,
+			&i.Currency,
+			&i.IdempotencyKey,
+			&i.BankReference,
+			&i.BankAccountSnapshot,
+			&i.Note,
+			&i.FailureCode,
+			&i.FailureMessage,
+			&i.LastReconciledAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CompletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStuck = `-- name: ListStuck :many
+SELECT id, type, status, initiator_user_id, source_wallet_id, destination_wallet_id, amount, currency, idempotency_key, bank_reference, bank_account_snapshot, note, failure_code, failure_message, last_reconciled_at, created_at, updated_at, completed_at FROM transactions
+ WHERE status IN ('PENDING', 'PROCESSING') AND type IN ('TOPUP', 'WITHDRAWAL')
+   AND created_at < $1::timestamptz
+ ORDER BY created_at, id
+ LIMIT $2
+`
+
+type ListStuckParams struct {
+	CreatedBefore time.Time
+	RowLimit      int32
+}
+
+// Top-ups and withdrawals not final long after they were created (TDR-009 stuck_alert).
+func (q *Queries) ListStuck(ctx context.Context, arg ListStuckParams) ([]Transaction, error) {
+	rows, err := q.db.Query(ctx, listStuck, arg.CreatedBefore, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}
