@@ -71,3 +71,29 @@ func (q *Queries) GetWalletByUserID(ctx context.Context, userID uuid.UUID) (Wall
 	)
 	return i, err
 }
+
+const setWalletStatus = `-- name: SetWalletStatus :one
+UPDATE wallets SET status = $1, updated_at = $2 WHERE id = $3 RETURNING id, user_id, ledger_account_id, currency, status, created_at, updated_at
+`
+
+type SetWalletStatusParams struct {
+	Status string
+	Now    time.Time
+	ID     uuid.UUID
+}
+
+// Operator freeze / unfreeze (TDR-018 §5, PRD-001 BR-8).
+func (q *Queries) SetWalletStatus(ctx context.Context, arg SetWalletStatusParams) (Wallet, error) {
+	row := q.db.QueryRow(ctx, setWalletStatus, arg.Status, arg.Now, arg.ID)
+	var i Wallet
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.LedgerAccountID,
+		&i.Currency,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

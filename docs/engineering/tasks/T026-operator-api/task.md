@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T026 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-10 |
 | Branch       | `task/T026-operator-api` |
 | Depends on   | T016 (discrepancy), T021–T023 (what gets recorded) |
@@ -52,12 +52,12 @@ Operator identities/roles, ledger adjustments (ADJUSTMENT entries), password res
 ops health (T028).
 
 ## Acceptance Criteria
-- [ ] AC-1 — No/wrong key → 401 on every internal route; key not configured → internal routes 404.
-- [ ] AC-2 — List: filters by status and kind, newest first, paging with `next_cursor`, validation errors.
-- [ ] AC-3 — Resolve: OPEN → RESOLVED with note and time; second resolve → 409; unknown → 404; note validation.
-- [ ] AC-4 — Freeze → user's transfers/withdrawals/top-ups get `WALLET_FROZEN`, incoming still credited; unfreeze → allowed again; both idempotent; unknown wallet → 404.
-- [ ] AC-5 — Config validation for `INTERNAL_API_KEY`; OpenAPI documents everything.
-- [ ] AC-6 — On DO: `INTERNAL_API_KEY` set as an encrypted secret; `GET /internal/v1/discrepancies` with the key → 200, without → 401 (recorded).
+- [x] AC-1 — No/wrong key → 401 on every internal route; key not configured → internal routes 404.
+- [x] AC-2 — List: filters by status and kind, newest first, paging with `next_cursor`, validation errors.
+- [x] AC-3 — Resolve: OPEN → RESOLVED with note and time; second resolve → 409; unknown → 404; note validation.
+- [x] AC-4 — Freeze → user's transfers/withdrawals/top-ups get `WALLET_FROZEN`, incoming still credited; unfreeze → allowed again; both idempotent; unknown wallet → 404.
+- [x] AC-5 — Config validation for `INTERNAL_API_KEY`; OpenAPI documents everything.
+- [x] AC-6 — On DO: `INTERNAL_API_KEY` set as an encrypted secret; `GET /internal/v1/discrepancies` with the key → 200, without → 401 (recorded).
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -80,3 +80,5 @@ ops health (T028).
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-10 | Ready | Planned; all questions answered |
+| 2026-11-10 | Approved | Implemented; review round 1: 1 Nit |
+| 2026-11-10 | Done | Finalized — PR opened |

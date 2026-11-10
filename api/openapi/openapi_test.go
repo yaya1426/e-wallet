@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/yaya1426/e-wallet/internal/discrepancy"
 	"github.com/yaya1426/e-wallet/internal/idempotency"
 	"github.com/yaya1426/e-wallet/internal/identity"
 	"github.com/yaya1426/e-wallet/internal/payment"
@@ -65,6 +66,10 @@ func TestSpec_DescribesTheEndpoints(t *testing.T) {
 		{"/v1/topups", "post"},
 		{"/v1/withdrawals", "post"},
 		{"/webhooks/bank", "post"},
+		{"/internal/v1/discrepancies", "get"},
+		{"/internal/v1/discrepancies/{id}/resolve", "post"},
+		{"/internal/v1/wallets/{wallet_id}/freeze", "post"},
+		{"/internal/v1/wallets/{wallet_id}/unfreeze", "post"},
 	}
 	for _, tt := range tests {
 		item, ok := paths.Get(tt.path)
@@ -89,6 +94,8 @@ func TestSpec_CataloguesEveryErrorCode(t *testing.T) {
 		transfer.CodeInvalidNote, identity.CodeRecipientNotFound, identity.CodeSelfTransferNotAllowed,
 		transaction.CodeInvalidLimit, transaction.CodeInvalidCursor, transaction.CodeTransactionNotFound,
 		webhook.CodeInvalidSignature,
+		discrepancy.CodeInvalidFilter, discrepancy.CodeDiscrepancyNotFound, discrepancy.CodeAlreadyResolved, discrepancy.CodeInvalidNote,
+		wallet.CodeWalletNotFound,
 		payment.CodeBankAccountRequired, wallet.CodeWalletLimitExceeded,
 	}
 	for _, code := range codes {

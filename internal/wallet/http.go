@@ -1,6 +1,7 @@
 package wallet
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -20,7 +21,43 @@ const (
 	CodeDailyLimitExceeded     = "DAILY_LIMIT_EXCEEDED"
 	CodeRecipientLimitExceeded = "RECIPIENT_LIMIT_EXCEEDED"
 	CodeWalletLimitExceeded    = "WALLET_LIMIT_EXCEEDED"
+	CodeWalletNotFound         = "WALLET_NOT_FOUND"
 )
+
+// InternalRoutes mounts the operator endpoints (TDR-018 §5); requireKey is the internal key
+// middleware.
+func (h *Handler) InternalRoutes(mux *http.ServeMux, requireKey func(http.Handler) http.Handler) {
+	mux.Handle("POST /internal/v1/wallets/{wallet_id}/freeze", requireKey(h.setStatus(StatusFrozen)))
+	mux.Handle("POST /internal/v1/wallets/{wallet_id}/unfreeze", requireKey(h.setStatus(StatusActive)))
+}
+
+type statusResponse struct {
+	WalletID uuid.UUID `json:"wallet_id"`
+	Status   string    `json:"status"`
+}
+
+func (h *Handler) setStatus(status Status) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(r.PathValue("wallet_id"))
+		if err != nil {
+			httpserver.WriteError(w, http.StatusNotFound, CodeWalletNotFound, "No wallet has this ID.")
+			return
+		}
+		wal, err := h.svc.SetStatus(r.Context(), id, status)
+		if errors.Is(err, ErrNotFound) {
+			httpserver.WriteError(w, http.StatusNotFound, CodeWalletNotFound, "No wallet has this ID.")
+			return
+		}
+		if err != nil {
+			h.log.ErrorContext(r.Context(), "wallet: set status failed", slog.Any("error", err))
+			httpserver.WriteError(w, http.StatusInternalServerError, httpserver.CodeInternal, "Internal server error.")
+			return
+		}
+		h.log.InfoContext(r.Context(), "operator action", slog.String("action", "set_wallet_status"),
+			slog.String("wallet_id", id.String()), slog.String("status", string(status)))
+		httpserver.WriteJSON(w, http.StatusOK, statusResponse{WalletID: wal.ID, Status: string(wal.Status)})
+	})
+}
 
 // Handler serves the wallet endpoints.
 type Handler struct {
