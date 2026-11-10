@@ -55,7 +55,7 @@ Every unit of work is a task folder `TNNN-<slug>/` (e.g. `T001-project-bootstrap
 | [T022](T022-recon-pending-bank-ops/task.md) | Reconciliation job `pending_bank_ops` (lost webhooks) | Done |
 | [T023](T023-recon-dead-outbox-stuck/task.md) | Reconciliation jobs `dead_outbox` and `stuck_alert` | Done |
 | [T024](T024-client-ip-register-limit/task.md) | Real client IP behind the proxy + registration rate limit | Done |
-| [T025](T025-refresh-tokens-logout/task.md) | Refresh tokens and logout | Ready |
+| [T025](T025-refresh-tokens-logout/task.md) | Refresh tokens and logout | Done |
 | [T026](T026-operator-api/task.md) | Operator API: discrepancies and wallet freeze | Ready |
 | [T027](T027-password-reset/task.md) | Operator-assisted password reset | Ready |
 | [T028](T028-ops-health-do-verification/task.md) | Ops health endpoint, DigitalOcean checks and remote e2e | Ready |

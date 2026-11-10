@@ -53,6 +53,8 @@ func TestSpec_DescribesTheEndpoints(t *testing.T) {
 	tests := []struct{ path, method string }{
 		{"/v1/auth/register", "post"},
 		{"/v1/auth/login", "post"},
+		{"/v1/auth/refresh", "post"},
+		{"/v1/auth/logout", "post"},
 		{"/v1/me/wallet", "get"},
 		{"/v1/me/bank-account", "put"},
 		{"/v1/me/bank-account", "get"},
@@ -79,7 +81,7 @@ func TestSpec_CataloguesEveryErrorCode(t *testing.T) {
 		httpserver.CodeMalformedRequest, httpserver.CodeRequestTooLarge, httpserver.CodeTryAgain, httpserver.CodeInternal,
 		identity.CodeInvalidPhone, identity.CodeInvalidPassword, identity.CodeInvalidName,
 		identity.CodePhoneAlreadyRegistered, identity.CodeInvalidCredentials,
-		identity.CodeUserDisabled, identity.CodeTooManyRequests, identity.CodeUnauthenticated,
+		identity.CodeUserDisabled, identity.CodeTooManyRequests, identity.CodeUnauthenticated, identity.CodeInvalidRefreshToken,
 		identity.CodeInvalidIBAN, identity.CodeInvalidHolderName, identity.CodeBankAccountNotFound,
 		idempotency.CodeKeyRequired, idempotency.CodeKeyInvalid, idempotency.CodeKeyReused, idempotency.CodeRequestInProgress,
 		wallet.CodeInvalidAmount, wallet.CodeUnsupportedCurrency, wallet.CodeAmountOutOfRange, wallet.CodeWalletFrozen,

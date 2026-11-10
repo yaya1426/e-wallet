@@ -87,6 +87,8 @@ type Wallet struct {
 	// the migrate commands (e.g. the pre-deploy job) run without a JWT secret.
 	JWTSecret string        `env:"JWT_SECRET"`
 	JWTTTL    time.Duration `env:"JWT_TTL" envDefault:"15m"`
+	// RefreshTokenTTL is how long a refresh token (a session) stays valid (TDR-018 §3).
+	RefreshTokenTTL time.Duration `env:"REFRESH_TOKEN_TTL" envDefault:"720h"`
 }
 
 var validHeaderName = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
@@ -105,6 +107,9 @@ func (cfg Wallet) ValidateServe() error {
 	} else if cfg.JWTTTL%time.Second != 0 {
 		// The login response reports expires_in in whole seconds.
 		errs = append(errs, fmt.Errorf("config: JWT_TTL must be whole seconds, got %s", cfg.JWTTTL))
+	}
+	if cfg.RefreshTokenTTL <= 0 || cfg.RefreshTokenTTL%time.Second != 0 {
+		errs = append(errs, fmt.Errorf("config: REFRESH_TOKEN_TTL must be a positive whole number of seconds, got %s", cfg.RefreshTokenTTL))
 	}
 	if err := cfg.ValidateBank(); err != nil {
 		errs = append(errs, err)

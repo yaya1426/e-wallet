@@ -299,7 +299,7 @@ func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logge
 	ledgerSvc := ledger.NewService(db, clk)
 	walletSvc := wallet.NewService(db, ledgerSvc, clk)
 	identitySvc, err := identity.NewService(db, walletSvc, clk, identity.Config{
-		JWTSecret: cfg.JWTSecret, JWTTTL: cfg.JWTTTL, BcryptCost: bcryptCost,
+		JWTSecret: cfg.JWTSecret, JWTTTL: cfg.JWTTTL, RefreshTTL: cfg.RefreshTokenTTL, BcryptCost: bcryptCost, Log: log,
 	})
 	if err != nil {
 		return nil, err

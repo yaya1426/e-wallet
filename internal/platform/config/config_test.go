@@ -47,7 +47,7 @@ func TestConfig_LoadWallet_Defaults(t *testing.T) {
 		LimitP2PMin: 100, LimitP2PMax: 3_000_000,
 		LimitMaxBalance: 10_000_000, LimitDailyOutgoing: 6_000_000,
 
-		JWTTTL: 15 * time.Minute,
+		JWTTTL: 15 * time.Minute, RefreshTokenTTL: 720 * time.Hour,
 	}, cfg)
 }
 
@@ -280,6 +280,28 @@ func TestConfig_ClientIPHeader(t *testing.T) {
 	for _, bad := range []string{"do connecting ip", "x:y", "ip\n"} {
 		_, err := LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL, "CLIENT_IP_HEADER": bad})
 		assert.ErrorContains(t, err, "CLIENT_IP_HEADER", bad)
+	}
+}
+
+// T025 AC-7.
+func TestConfig_RefreshTokenTTL(t *testing.T) {
+	base := map[string]string{"DATABASE_URL": testDatabaseURL, "JWT_SECRET": strings.Repeat("s", 32),
+		"BANK_BASE_URL": "http://b", "BANK_WEBHOOK_SECRET": strings.Repeat("w", 32)}
+	for _, tt := range []struct {
+		value string
+		ok    bool
+	}{{"24h", true}, {"0s", false}, {"-1h", false}, {"90500ms", false}} {
+		env := map[string]string{"REFRESH_TOKEN_TTL": tt.value}
+		for k, v := range base {
+			env[k] = v
+		}
+		cfg, err := LoadWallet(env)
+		require.NoError(t, err)
+		if tt.ok {
+			assert.NoError(t, cfg.ValidateServe())
+		} else {
+			assert.ErrorContains(t, cfg.ValidateServe(), "REFRESH_TOKEN_TTL", tt.value)
+		}
 	}
 }
 
