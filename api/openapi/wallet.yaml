@@ -237,6 +237,64 @@ paths:
           $ref: '#/components/responses/RequestTooLarge'
         '500':
           $ref: '#/components/responses/Internal'
+  /v1/auth/password-reset:
+    post:
+      tags: [auth]
+      operationId: resetPassword
+      summary: Set a new password with a one-time code from an operator
+      description: |
+        Operator-assisted reset (TDR-018 §4): the code (6 digits, 15 minutes, at most 5 wrong
+        attempts) comes from `POST /internal/v1/users/{phone}/password-reset-code`. Success signs
+        the user out of every session (refresh tokens revoked). Shares the login rate limit.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [phone, code, new_password]
+              properties:
+                phone: {type: string, examples: ['+201001234567']}
+                code: {type: string, pattern: '^[0-9]{6}$'}
+                new_password: {type: string, format: password, description: 8 to 72 bytes.}
+      responses:
+        '204':
+          description: Password changed.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+        '400':
+          description: '`MALFORMED_REQUEST`, `INVALID_PASSWORD`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: '`INVALID_RESET_CODE`: unknown phone, or the code is wrong, expired, used or dead after 5 wrong attempts.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          $ref: '#/components/responses/RequestTooLarge'
+        '429':
+          description: '`TOO_MANY_REQUESTS`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/Internal'
   /v1/me/wallet:
     get:
       tags: [wallet]
@@ -1026,6 +1084,60 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: '`WALLET_NOT_FOUND`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /internal/v1/users/{phone}/password-reset-code:
+    post:
+      tags: [internal]
+      operationId: issuePasswordResetCode
+      summary: Issue a one-time password reset code for a user (give it to them out of band)
+      description: Valid 15 minutes; issuing a new code invalidates the user's earlier unused codes (TDR-018 §4).
+      security:
+        - internalKey: []
+      parameters:
+        - {name: phone, in: path, required: true, description: 'E.164, URL-escaped (+ as %2B).', schema: {type: string}}
+      responses:
+        '201':
+          description: The code.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [phone, code, expires_at]
+                properties:
+                  phone: {type: string}
+                  code: {type: string, pattern: '^[0-9]{6}$'}
+                  expires_at: {type: string, format: date-time}
+        '400':
+          description: '`INVALID_PHONE`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: '`UNAUTHENTICATED`: missing or wrong `X-Internal-Api-Key`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: '`USER_NOT_FOUND`.'
           headers:
             X-Request-ID:
               $ref: '#/components/headers/RequestID'

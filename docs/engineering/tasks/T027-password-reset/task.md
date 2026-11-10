@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T027 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-10 |
 | Branch       | `task/T027-password-reset` |
 | Depends on   | T025 (revoke sessions), T026 (internal key) |
@@ -55,12 +55,12 @@ INDEX (user_id, created_at DESC)
 SMS/email delivery, self-service request endpoint.
 
 ## Acceptance Criteria
-- [ ] AC-1 — Operator issues a code → 201 with 6 digits and expiry ≈ now+15 min; DB holds only the hash; issuing again invalidates the first code.
-- [ ] AC-2 — Reset with the right code → 204; old password fails, new works; all refresh tokens of the user revoked; the code cannot be used twice.
-- [ ] AC-3 — Wrong code ×5 → the code is dead (even the right code then → 401); expired code (fake clock 16 min) → 401; unknown phone → 401 (same body).
-- [ ] AC-4 — Invalid new password → 400 `INVALID_PASSWORD` and the attempt is not counted.
-- [ ] AC-5 — Internal endpoint needs the key; unknown phone → 404; rate limit → 429.
-- [ ] AC-6 — OpenAPI documents both endpoints and codes.
+- [x] AC-1 — Operator issues a code → 201 with 6 digits and expiry ≈ now+15 min; DB holds only the hash; issuing again invalidates the first code.
+- [x] AC-2 — Reset with the right code → 204; old password fails, new works; all refresh tokens of the user revoked; the code cannot be used twice.
+- [x] AC-3 — Wrong code ×5 → the code is dead (even the right code then → 401); expired code (fake clock 16 min) → 401; unknown phone → 401 (same body).
+- [x] AC-4 — Invalid new password → 400 `INVALID_PASSWORD` and the attempt is not counted.
+- [x] AC-5 — Internal endpoint needs the key; unknown phone → 404; rate limit → 429.
+- [x] AC-6 — OpenAPI documents both endpoints and codes.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -82,3 +82,5 @@ SMS/email delivery, self-service request endpoint.
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-10 | Ready | Planned; all questions answered |
+| 2026-11-10 | Approved | Implemented and reviewed (no findings) |
+| 2026-11-10 | Done | Finalized — PR opened |

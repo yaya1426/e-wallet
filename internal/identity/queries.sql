@@ -41,3 +41,32 @@ UPDATE refresh_tokens SET revoked_at = @now::timestamptz
 
 -- name: RevokeUserRefreshTokens :execrows
 UPDATE refresh_tokens SET revoked_at = @now::timestamptz WHERE user_id = @user_id AND revoked_at IS NULL;
+
+-- name: InvalidateResetCodes :exec
+-- Issuing a new code ends the older ones (TDR-018 §4).
+UPDATE password_reset_codes SET invalidated_at = @now::timestamptz
+ WHERE user_id = @user_id AND used_at IS NULL AND invalidated_at IS NULL;
+
+-- name: InsertResetCode :exec
+INSERT INTO password_reset_codes (id, user_id, code_hash, created_at, expires_at)
+VALUES (@id, @user_id, @code_hash, @created_at, @expires_at);
+
+-- name: GetActiveResetCodeForUpdate :one
+SELECT * FROM password_reset_codes
+ WHERE user_id = @user_id AND used_at IS NULL AND invalidated_at IS NULL AND expires_at > @now::timestamptz
+ ORDER BY created_at DESC
+ LIMIT 1
+ FOR UPDATE;
+
+-- name: RecordWrongResetCode :exec
+-- A wrong code counts; the last allowed wrong attempt ends the code.
+UPDATE password_reset_codes
+   SET attempts = attempts + 1,
+       invalidated_at = CASE WHEN attempts + 1 >= @max_attempts::int THEN @now::timestamptz ELSE invalidated_at END
+ WHERE id = @id;
+
+-- name: MarkResetCodeUsed :exec
+UPDATE password_reset_codes SET used_at = @now::timestamptz WHERE id = @id;
+
+-- name: UpdatePasswordHash :exec
+UPDATE users SET password_hash = @password_hash WHERE id = @id;
