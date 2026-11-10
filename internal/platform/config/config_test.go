@@ -17,10 +17,12 @@ func TestConfig_LoadWallet_Defaults(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, Wallet{
-		DatabaseURL:     testDatabaseURL,
-		HTTPAddr:        ":8080",
-		LogLevel:        slog.LevelInfo,
-		ShutdownTimeout: 25 * time.Second,
+		DatabaseURL: testDatabaseURL,
+		HTTPAddr:    ":8080",
+
+		RegisterLimitPerHour: 5,
+		LogLevel:             slog.LevelInfo,
+		ShutdownTimeout:      25 * time.Second,
 
 		DBLockTimeout:      2 * time.Second,
 		DBStatementTimeout: 5 * time.Second,
@@ -267,6 +269,17 @@ func TestConfig_ReconDeadStuck(t *testing.T) {
 	} {
 		_, err := LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL, tt.name: tt.value})
 		assert.ErrorContains(t, err, tt.name, tt.value)
+	}
+}
+
+// T024 AC-5.
+func TestConfig_ClientIPHeader(t *testing.T) {
+	cfg, err := LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL, "CLIENT_IP_HEADER": "do-connecting-ip"})
+	require.NoError(t, err)
+	assert.Equal(t, "do-connecting-ip", cfg.ClientIPHeader)
+	for _, bad := range []string{"do connecting ip", "x:y", "ip\n"} {
+		_, err := LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL, "CLIENT_IP_HEADER": bad})
+		assert.ErrorContains(t, err, "CLIENT_IP_HEADER", bad)
 	}
 }
 

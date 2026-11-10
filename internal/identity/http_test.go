@@ -24,7 +24,7 @@ func newUnitHandler(t *testing.T, clk *clocktest.Fake) (*Handler, tokens) {
 	t.Helper()
 	svc, err := NewService(nil, nil, clk, Config{JWTSecret: testSecret, JWTTTL: 15 * time.Minute, BcryptCost: bcrypt.MinCost})
 	require.NoError(t, err)
-	return NewHandler(svc, NewLoginLimiter(clk), slog.New(slog.DiscardHandler)), svc.tokens
+	return NewHandler(svc, NewLoginLimiter(clk), NewRegisterLimiter(5, clk), slog.New(slog.DiscardHandler)), svc.tokens
 }
 
 func TestRequireAuth(t *testing.T) {
@@ -66,14 +66,4 @@ func TestRequireAuth(t *testing.T) {
 			assert.Contains(t, string(body), `"code":"UNAUTHENTICATED"`)
 		})
 	}
-}
-
-func TestClientIP(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
-	req.RemoteAddr = "203.0.113.7:51234"
-	req.Header.Set("X-Forwarded-For", "198.51.100.1")
-	assert.Equal(t, "203.0.113.7", clientIP(req), "X-Forwarded-For is ignored in phase 1")
-
-	req.RemoteAddr = "[2001:db8::1]:443"
-	assert.Equal(t, "2001:db8::1", clientIP(req))
 }

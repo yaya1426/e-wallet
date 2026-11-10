@@ -42,6 +42,7 @@ Spec-driven development: **nothing is implemented until the relevant PRD and TDR
 | [TDR-015](tdrs/TDR-015-container-files-at-root.md) | Dockerfile and docker-compose.yml at the repo root | Accepted |
 | [TDR-016](tdrs/TDR-016-discrepancy-module.md) | `discrepancy` module owns reconciliation discrepancies | Accepted |
 | [TDR-017](tdrs/TDR-017-api-conventions-addendum.md) | API addendum: 413, 429, idempotency lock wait → 409 | Accepted |
+| [TDR-018](tdrs/TDR-018-mvp-sessions-and-operator-access.md) | MVP: client IP, register limit, refresh tokens, password reset, operator key | Accepted |
 
 ## Engineering
 

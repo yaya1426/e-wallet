@@ -27,6 +27,7 @@ import (
 	"github.com/yaya1426/e-wallet/internal/platform/config"
 	"github.com/yaya1426/e-wallet/internal/platform/database"
 	"github.com/yaya1426/e-wallet/internal/platform/database/databasetest"
+	"github.com/yaya1426/e-wallet/internal/platform/httpserver"
 	"github.com/yaya1426/e-wallet/internal/platform/logger"
 	"github.com/yaya1426/e-wallet/internal/platform/metrics"
 	"github.com/yaya1426/e-wallet/internal/platform/money"
@@ -87,7 +88,7 @@ func newAPIFixtureWith(t *testing.T, clk clock.Clock, extraEnv map[string]string
 	t.Cleanup(func() { ledgertest.AssertIntegrity(t, db) })
 
 	environ := map[string]string{"DATABASE_URL": url, "JWT_SECRET": "integration-secret-at-least-32-bytes-long", "BANK_BASE_URL": testBankURL,
-		"BANK_WEBHOOK_SECRET": testWebhookSecret}
+		"BANK_WEBHOOK_SECRET": testWebhookSecret, "REGISTER_LIMIT_PER_HOUR": "1000"}
 	for k, v := range extraEnv {
 		environ[k] = v
 	}
@@ -99,7 +100,7 @@ func newAPIFixtureWith(t *testing.T, clk clock.Clock, extraEnv map[string]string
 	gateway := banktest.New()
 	a, err := newAPI(db, cfg, clk, log, nil, bcrypt.MinCost, gateway)
 	require.NoError(t, err)
-	srv := httptest.NewServer(newHandler(log, metrics.New(), nil, a.routes))
+	srv := httptest.NewServer(newHandler(log, metrics.New(), nil, a.routes, httpserver.WithClientIPHeader(cfg.ClientIPHeader)))
 	t.Cleanup(srv.Close)
 	return apiFixture{api: a, bank: gateway, db: db, server: srv, clock: clk, ledger: ledger.NewService(db, clk), txns: transaction.NewService(clk), retries: retries}
 }

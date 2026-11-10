@@ -68,7 +68,8 @@ func serve(ctx context.Context, environ map[string]string, stdout, stderr io.Wri
 		log.Error("startup failed", slog.Any("error", err))
 		return exitError
 	}
-	srv := httpserver.New(cfg.HTTPAddr, newHandler(log, m, readinessChecks(log, db, migrator), api.routes), cfg.ShutdownTimeout, log)
+	srv := httpserver.New(cfg.HTTPAddr, newHandler(log, m, readinessChecks(log, db, migrator), api.routes,
+		httpserver.WithClientIPHeader(cfg.ClientIPHeader)), cfg.ShutdownTimeout, log)
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return srv.Run(gctx) })
@@ -240,7 +241,9 @@ func connect(ctx context.Context, cfg config.Wallet, log *slog.Logger, observer 
 
 // newHandler builds the routes of the wallet HTTP API: the ops endpoints plus whatever
 // mount adds (nil for none).
-func newHandler(log *slog.Logger, m *metrics.Metrics, checks []httpserver.ReadinessCheck, mount func(*http.ServeMux)) http.Handler {
+func newHandler(log *slog.Logger, m *metrics.Metrics, checks []httpserver.ReadinessCheck, mount func(*http.ServeMux),
+	opts ...httpserver.Option,
+) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /healthz", httpserver.Healthz())
 	mux.Handle("GET /readyz", httpserver.Readyz(readinessCheckTimeout, checks...))
@@ -248,7 +251,7 @@ func newHandler(log *slog.Logger, m *metrics.Metrics, checks []httpserver.Readin
 	if mount != nil {
 		mount(mux)
 	}
-	return httpserver.NewHandler(mux, log, m)
+	return httpserver.NewHandler(mux, log, m, opts...)
 }
 
 // api is the composition root of the business modules (architecture §3): it builds the
@@ -327,7 +330,7 @@ func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logge
 	inboxSvc.SetHandler(paymentSvc) // bank outcomes are applied by payment (TDR-007 §3)
 	transferSvc := transfer.NewService(db, identitySvc, walletSvc, ledgerSvc, transactionSvc, idempotencySvc, limits(cfg), clk)
 	a := &api{
-		identity: identity.NewHandler(identitySvc, identity.NewLoginLimiter(clk), log),
+		identity: identity.NewHandler(identitySvc, identity.NewLoginLimiter(clk), identity.NewRegisterLimiter(cfg.RegisterLimitPerHour, clk), log),
 		wallet:   wallet.NewHandler(walletSvc, log),
 		transfer: transfer.NewHandler(transferSvc, log),
 		payment:  payment.NewHandler(paymentSvc, log),
