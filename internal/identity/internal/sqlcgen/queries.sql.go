@@ -36,6 +36,35 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) error {
 	return err
 }
 
+const getActiveResetCodeForUpdate = `-- name: GetActiveResetCodeForUpdate :one
+SELECT id, user_id, code_hash, created_at, expires_at, attempts, used_at, invalidated_at FROM password_reset_codes
+ WHERE user_id = $1 AND used_at IS NULL AND invalidated_at IS NULL AND expires_at > $2::timestamptz
+ ORDER BY created_at DESC
+ LIMIT 1
+ FOR UPDATE
+`
+
+type GetActiveResetCodeForUpdateParams struct {
+	UserID uuid.UUID
+	Now    time.Time
+}
+
+func (q *Queries) GetActiveResetCodeForUpdate(ctx context.Context, arg GetActiveResetCodeForUpdateParams) (PasswordResetCode, error) {
+	row := q.db.QueryRow(ctx, getActiveResetCodeForUpdate, arg.UserID, arg.Now)
+	var i PasswordResetCode
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.CodeHash,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.Attempts,
+		&i.UsedAt,
+		&i.InvalidatedAt,
+	)
+	return i, err
+}
+
 const getBankAccountByUserID = `-- name: GetBankAccountByUserID :one
 SELECT id, user_id, iban, holder_name, created_at, updated_at FROM bank_accounts WHERE user_id = $1
 `
@@ -136,6 +165,46 @@ func (q *Queries) InsertRefreshToken(ctx context.Context, arg InsertRefreshToken
 	return err
 }
 
+const insertResetCode = `-- name: InsertResetCode :exec
+INSERT INTO password_reset_codes (id, user_id, code_hash, created_at, expires_at)
+VALUES ($1, $2, $3, $4, $5)
+`
+
+type InsertResetCodeParams struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	CodeHash  []byte
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+func (q *Queries) InsertResetCode(ctx context.Context, arg InsertResetCodeParams) error {
+	_, err := q.db.Exec(ctx, insertResetCode,
+		arg.ID,
+		arg.UserID,
+		arg.CodeHash,
+		arg.CreatedAt,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
+const invalidateResetCodes = `-- name: InvalidateResetCodes :exec
+UPDATE password_reset_codes SET invalidated_at = $1::timestamptz
+ WHERE user_id = $2 AND used_at IS NULL AND invalidated_at IS NULL
+`
+
+type InvalidateResetCodesParams struct {
+	Now    time.Time
+	UserID uuid.UUID
+}
+
+// Issuing a new code ends the older ones (TDR-018 §4).
+func (q *Queries) InvalidateResetCodes(ctx context.Context, arg InvalidateResetCodesParams) error {
+	_, err := q.db.Exec(ctx, invalidateResetCodes, arg.Now, arg.UserID)
+	return err
+}
+
 const markRefreshTokenUsed = `-- name: MarkRefreshTokenUsed :exec
 UPDATE refresh_tokens SET used_at = $1::timestamptz WHERE id = $2
 `
@@ -147,6 +216,39 @@ type MarkRefreshTokenUsedParams struct {
 
 func (q *Queries) MarkRefreshTokenUsed(ctx context.Context, arg MarkRefreshTokenUsedParams) error {
 	_, err := q.db.Exec(ctx, markRefreshTokenUsed, arg.UsedAt, arg.ID)
+	return err
+}
+
+const markResetCodeUsed = `-- name: MarkResetCodeUsed :exec
+UPDATE password_reset_codes SET used_at = $1::timestamptz WHERE id = $2
+`
+
+type MarkResetCodeUsedParams struct {
+	Now time.Time
+	ID  uuid.UUID
+}
+
+func (q *Queries) MarkResetCodeUsed(ctx context.Context, arg MarkResetCodeUsedParams) error {
+	_, err := q.db.Exec(ctx, markResetCodeUsed, arg.Now, arg.ID)
+	return err
+}
+
+const recordWrongResetCode = `-- name: RecordWrongResetCode :exec
+UPDATE password_reset_codes
+   SET attempts = attempts + 1,
+       invalidated_at = CASE WHEN attempts + 1 >= $1::int THEN $2::timestamptz ELSE invalidated_at END
+ WHERE id = $3
+`
+
+type RecordWrongResetCodeParams struct {
+	MaxAttempts int32
+	Now         time.Time
+	ID          uuid.UUID
+}
+
+// A wrong code counts; the last allowed wrong attempt ends the code.
+func (q *Queries) RecordWrongResetCode(ctx context.Context, arg RecordWrongResetCodeParams) error {
+	_, err := q.db.Exec(ctx, recordWrongResetCode, arg.MaxAttempts, arg.Now, arg.ID)
 	return err
 }
 
@@ -204,6 +306,20 @@ func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, arg RevokeUserRef
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const updatePasswordHash = `-- name: UpdatePasswordHash :exec
+UPDATE users SET password_hash = $1 WHERE id = $2
+`
+
+type UpdatePasswordHashParams struct {
+	PasswordHash string
+	ID           uuid.UUID
+}
+
+func (q *Queries) UpdatePasswordHash(ctx context.Context, arg UpdatePasswordHashParams) error {
+	_, err := q.db.Exec(ctx, updatePasswordHash, arg.PasswordHash, arg.ID)
+	return err
 }
 
 const upsertBankAccount = `-- name: UpsertBankAccount :one

@@ -98,6 +98,17 @@ type OutboxEvent struct {
 	ProcessedAt   *time.Time
 }
 
+type PasswordResetCode struct {
+	ID            uuid.UUID
+	UserID        uuid.UUID
+	CodeHash      []byte
+	CreatedAt     time.Time
+	ExpiresAt     time.Time
+	Attempts      int32
+	UsedAt        *time.Time
+	InvalidatedAt *time.Time
+}
+
 type Posting struct {
 	ID             uuid.UUID
 	JournalEntryID uuid.UUID

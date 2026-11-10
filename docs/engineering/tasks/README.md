@@ -57,7 +57,7 @@ Every unit of work is a task folder `TNNN-<slug>/` (e.g. `T001-project-bootstrap
 | [T024](T024-client-ip-register-limit/task.md) | Real client IP behind the proxy + registration rate limit | Done |
 | [T025](T025-refresh-tokens-logout/task.md) | Refresh tokens and logout | Done |
 | [T026](T026-operator-api/task.md) | Operator API: discrepancies and wallet freeze | Done |
-| [T027](T027-password-reset/task.md) | Operator-assisted password reset | Ready |
+| [T027](T027-password-reset/task.md) | Operator-assisted password reset | Done |
 | [T028](T028-ops-health-do-verification/task.md) | Ops health endpoint, DigitalOcean checks and remote e2e | Ready |
 
 Phase-1 order and dependencies: see the [roadmap](../roadmap.md). Phase 2 is planned task by task (T021 onward); T021–T023 cover reconciliation (P2-2/P2-3).

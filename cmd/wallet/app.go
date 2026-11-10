@@ -388,6 +388,7 @@ func (a *api) routes(mux *http.ServeMux) {
 		requireKey := httpserver.RequireInternalKey(a.internalKey)
 		a.operator.discrepancies.InternalRoutes(mux, requireKey)
 		a.operator.wallets.InternalRoutes(mux, requireKey)
+		a.identity.InternalRoutes(mux, requireKey)
 	}
 }
 

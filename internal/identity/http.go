@@ -24,6 +24,8 @@ const (
 	CodeTooManyRequests        = "TOO_MANY_REQUESTS"
 	CodeUnauthenticated        = "UNAUTHENTICATED"
 	CodeInvalidRefreshToken    = "INVALID_REFRESH_TOKEN"
+	CodeInvalidResetCode       = "INVALID_RESET_CODE"
+	CodeUserNotFound           = "USER_NOT_FOUND"
 	CodeInvalidIBAN            = "INVALID_IBAN"
 	CodeInvalidHolderName      = "INVALID_HOLDER_NAME"
 	CodeBankAccountNotFound    = "BANK_ACCOUNT_NOT_FOUND"
@@ -51,6 +53,7 @@ func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/auth/login", h.login)
 	mux.HandleFunc("POST /v1/auth/refresh", h.refresh)
 	mux.Handle("POST /v1/auth/logout", h.RequireAuth(http.HandlerFunc(h.logout)))
+	mux.HandleFunc("POST /v1/auth/password-reset", h.resetPassword)
 	mux.Handle("PUT /v1/me/bank-account", h.RequireAuth(http.HandlerFunc(h.putBankAccount)))
 	mux.Handle("GET /v1/me/bank-account", h.RequireAuth(http.HandlerFunc(h.getBankAccount)))
 	mux.Handle("GET /v1/recipients", h.RequireAuth(http.HandlerFunc(h.previewRecipient)))
@@ -131,6 +134,58 @@ func sessionResponse(s Session) loginResponse {
 		AccessToken: s.Token, TokenType: "Bearer", ExpiresIn: int64(s.ExpiresIn / time.Second),
 		RefreshToken: s.RefreshToken, RefreshExpiresIn: int64(s.RefreshExpiresIn / time.Second),
 	}
+}
+
+// InternalRoutes mounts the operator endpoints (TDR-018 §4–5); requireKey is the internal
+// key middleware.
+func (h *Handler) InternalRoutes(mux *http.ServeMux, requireKey func(http.Handler) http.Handler) {
+	mux.Handle("POST /internal/v1/users/{phone}/password-reset-code", requireKey(http.HandlerFunc(h.issueResetCode)))
+}
+
+type resetCodeResponse struct {
+	Phone     string    `json:"phone"`
+	Code      string    `json:"code"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// issueResetCode handles POST /internal/v1/users/{phone}/password-reset-code (operator).
+func (h *Handler) issueResetCode(w http.ResponseWriter, r *http.Request) {
+	rc, err := h.svc.IssueResetCode(r.Context(), r.PathValue("phone"))
+	if errors.Is(err, ErrUserNotFound) {
+		httpserver.WriteError(w, http.StatusNotFound, CodeUserNotFound, "No user is registered with this phone number.")
+		return
+	}
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	h.log.InfoContext(r.Context(), "operator action", slog.String("action", "issue_password_reset_code"))
+	httpserver.WriteJSON(w, http.StatusCreated, resetCodeResponse{Phone: rc.Phone, Code: rc.Code, ExpiresAt: rc.ExpiresAt.UTC()})
+}
+
+type resetPasswordRequest struct {
+	Phone       string `json:"phone"`
+	Code        string `json:"code"`
+	NewPassword string `json:"new_password"`
+}
+
+// resetPassword handles POST /v1/auth/password-reset (TDR-018 §4). It shares the login rate
+// limit (per phone and per client IP).
+func (h *Handler) resetPassword(w http.ResponseWriter, r *http.Request) {
+	var req resetPasswordRequest
+	if err := httpserver.DecodeJSON(w, r, &req); err != nil {
+		httpserver.WriteDecodeError(w, err)
+		return
+	}
+	if !h.limiter.Allow(req.Phone, httpserver.ClientIP(r)) {
+		httpserver.WriteError(w, http.StatusTooManyRequests, CodeTooManyRequests, "Too many attempts. Try again in a minute.")
+		return
+	}
+	if err := h.svc.ResetPassword(r.Context(), req.Phone, req.Code, req.NewPassword); err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 type refreshRequest struct {
@@ -293,6 +348,8 @@ func (h *Handler) writeError(w http.ResponseWriter, r *http.Request, err error) 
 		httpserver.WriteError(w, http.StatusNotFound, CodeRecipientNotFound, "No user is registered with this phone number.")
 	case errors.Is(err, ErrSelfRecipient):
 		httpserver.WriteError(w, http.StatusUnprocessableEntity, CodeSelfTransferNotAllowed, "You cannot send money to yourself.")
+	case errors.Is(err, ErrInvalidResetCode):
+		httpserver.WriteError(w, http.StatusUnauthorized, CodeInvalidResetCode, "The reset code is invalid or expired. Ask for a new one.")
 	case errors.Is(err, ErrInvalidRefreshToken):
 		httpserver.WriteError(w, http.StatusUnauthorized, CodeInvalidRefreshToken, "The refresh token is invalid or expired. Please log in again.")
 	case errors.Is(err, ErrUnauthenticated):
