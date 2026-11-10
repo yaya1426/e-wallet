@@ -72,6 +72,15 @@ paths:
                 $ref: '#/components/schemas/Error'
         '413':
           $ref: '#/components/responses/RequestTooLarge'
+        '429':
+          description: '`TOO_MANY_REQUESTS`: too many registrations from this client IP this hour (REGISTER_LIMIT_PER_HOUR, TDR-018).'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           $ref: '#/components/responses/Internal'
         '503':
@@ -131,6 +140,99 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /v1/auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refresh
+      summary: Exchange a refresh token for a new access token and refresh token
+      description: |
+        Rotation (TDR-018 §3): the refresh token is single use; the answer carries a new one,
+        valid 30 days from now. Presenting a token that was already used signs the whole
+        session out (possible theft).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: A new session (same shape as the login response).
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          description: '`MALFORMED_REQUEST`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: '`INVALID_REFRESH_TOKEN`: unknown, expired, already used or revoked; log in again.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: '`USER_DISABLED`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          $ref: '#/components/responses/RequestTooLarge'
+        '500':
+          $ref: '#/components/responses/Internal'
+  /v1/auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: End the session of a refresh token
+      description: Always 204 for a signed-in caller; an unknown token or another user's token changes nothing.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '204':
+          description: Signed out (or nothing to do).
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+        '400':
+          description: '`MALFORMED_REQUEST`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/UserDisabled'
+        '413':
+          $ref: '#/components/responses/RequestTooLarge'
         '500':
           $ref: '#/components/responses/Internal'
   /v1/me/wallet:
@@ -906,7 +1008,7 @@ components:
           format: password
     LoginResponse:
       type: object
-      required: [access_token, token_type, expires_in]
+      required: [access_token, token_type, expires_in, refresh_token, refresh_expires_in]
       properties:
         access_token:
           type: string
@@ -917,6 +1019,20 @@ components:
           type: integer
           description: Seconds until the token expires (JWT_TTL).
           examples: [900]
+        refresh_token:
+          type: string
+          description: Opaque; send it to /v1/auth/refresh before it expires. Each refresh returns a new one and the old one stops working (TDR-018).
+        refresh_expires_in:
+          type: integer
+          description: Seconds until the refresh token expires (REFRESH_TOKEN_TTL).
+          examples: [2592000]
+    RefreshRequest:
+      type: object
+      additionalProperties: false
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
     Wallet:
       type: object
       required: [wallet_id, currency, available_balance_minor, status]

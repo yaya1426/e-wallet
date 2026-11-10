@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T025 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-10 |
 | Branch       | `task/T025-refresh-tokens-logout` |
 | Depends on   | T024 |
@@ -64,13 +64,13 @@ INDEX (family_id), INDEX (user_id)
 Listing sessions, device names, cleanup of old rows.
 
 ## Acceptance Criteria
-- [ ] AC-1 — Login returns both tokens; `refresh_expires_in` = 2 592 000; the DB stores only the hash.
-- [ ] AC-2 — Refresh with a valid token → new access + new refresh token; the old refresh token no longer works; the new access token works on `/v1/me/wallet`.
-- [ ] AC-3 — Reusing an already-used refresh token → 401 and the newer token of the same session is revoked too; another session (second login) is unaffected.
-- [ ] AC-4 — Expired (fake clock past 30 days) or unknown token → 401 `INVALID_REFRESH_TOKEN`; disabled user → 403.
-- [ ] AC-5 — Logout revokes the session (refresh fails afterwards); logout of an unknown token or another user's token → 204, nothing else revoked; no access token → 401.
-- [ ] AC-6 — Two concurrent refreshes with the same token → exactly one 200; the other 401 (and the family is revoked).
-- [ ] AC-7 — Config `REFRESH_TOKEN_TTL` default/validation; OpenAPI documents the endpoints and code.
+- [x] AC-1 — Login returns both tokens; `refresh_expires_in` = 2 592 000; the DB stores only the hash.
+- [x] AC-2 — Refresh with a valid token → new access + new refresh token; the old refresh token no longer works; the new access token works on `/v1/me/wallet`.
+- [x] AC-3 — Reusing an already-used refresh token → 401 and the newer token of the same session is revoked too; another session (second login) is unaffected.
+- [x] AC-4 — Expired (fake clock past 30 days) or unknown token → 401 `INVALID_REFRESH_TOKEN`; disabled user → 403.
+- [x] AC-5 — Logout revokes the session (refresh fails afterwards); logout of an unknown token or another user's token → 204, nothing else revoked; no access token → 401.
+- [x] AC-6 — Two concurrent refreshes with the same token → exactly one 200; the other 401 (and the family is revoked).
+- [x] AC-7 — Config `REFRESH_TOKEN_TTL` default/validation; OpenAPI documents the endpoints and code.
 
 ## Test Plan
 | AC | Test type | Test name or scenario |
@@ -92,3 +92,5 @@ Listing sessions, device names, cleanup of old rows.
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-10 | Ready | Planned; all questions answered |
+| 2026-11-10 | Approved | Implemented; review round 1: 1 Minor (cleanup follow-up) |
+| 2026-11-10 | Done | Finalized — PR opened |

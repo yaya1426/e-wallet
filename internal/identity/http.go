@@ -23,6 +23,7 @@ const (
 	CodeUserDisabled           = "USER_DISABLED"
 	CodeTooManyRequests        = "TOO_MANY_REQUESTS"
 	CodeUnauthenticated        = "UNAUTHENTICATED"
+	CodeInvalidRefreshToken    = "INVALID_REFRESH_TOKEN"
 	CodeInvalidIBAN            = "INVALID_IBAN"
 	CodeInvalidHolderName      = "INVALID_HOLDER_NAME"
 	CodeBankAccountNotFound    = "BANK_ACCOUNT_NOT_FOUND"
@@ -48,6 +49,8 @@ func NewHandler(svc *Service, limiter *LoginLimiter, register *RegisterLimiter, 
 func (h *Handler) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/auth/register", h.register)
 	mux.HandleFunc("POST /v1/auth/login", h.login)
+	mux.HandleFunc("POST /v1/auth/refresh", h.refresh)
+	mux.Handle("POST /v1/auth/logout", h.RequireAuth(http.HandlerFunc(h.logout)))
 	mux.Handle("PUT /v1/me/bank-account", h.RequireAuth(http.HandlerFunc(h.putBankAccount)))
 	mux.Handle("GET /v1/me/bank-account", h.RequireAuth(http.HandlerFunc(h.getBankAccount)))
 	mux.Handle("GET /v1/recipients", h.RequireAuth(http.HandlerFunc(h.previewRecipient)))
@@ -116,9 +119,56 @@ type loginRequest struct {
 }
 
 type loginResponse struct {
-	AccessToken string `json:"access_token"`
-	TokenType   string `json:"token_type"`
-	ExpiresIn   int64  `json:"expires_in"` // seconds
+	AccessToken      string `json:"access_token"`
+	TokenType        string `json:"token_type"`
+	ExpiresIn        int64  `json:"expires_in"` // seconds
+	RefreshToken     string `json:"refresh_token"`
+	RefreshExpiresIn int64  `json:"refresh_expires_in"` // seconds
+}
+
+func sessionResponse(s Session) loginResponse {
+	return loginResponse{
+		AccessToken: s.Token, TokenType: "Bearer", ExpiresIn: int64(s.ExpiresIn / time.Second),
+		RefreshToken: s.RefreshToken, RefreshExpiresIn: int64(s.RefreshExpiresIn / time.Second),
+	}
+}
+
+type refreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+// refresh handles POST /v1/auth/refresh: a new access token and a new refresh token
+// (rotation, TDR-018 §3).
+func (h *Handler) refresh(w http.ResponseWriter, r *http.Request) {
+	var req refreshRequest
+	if err := httpserver.DecodeJSON(w, r, &req); err != nil {
+		httpserver.WriteDecodeError(w, err)
+		return
+	}
+	session, err := h.svc.Refresh(r.Context(), req.RefreshToken)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	httpserver.WriteJSON(w, http.StatusOK, sessionResponse(session))
+}
+
+// logout handles POST /v1/auth/logout: the session of the refresh token ends. Always 204.
+func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.requestUser(w, r)
+	if !ok {
+		return
+	}
+	var req refreshRequest
+	if err := httpserver.DecodeJSON(w, r, &req); err != nil {
+		httpserver.WriteDecodeError(w, err)
+		return
+	}
+	if err := h.svc.Logout(r.Context(), userID, req.RefreshToken); err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
@@ -131,16 +181,12 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		httpserver.WriteError(w, http.StatusTooManyRequests, CodeTooManyRequests, "Too many login attempts. Try again in a minute.")
 		return
 	}
-	token, err := h.svc.Login(r.Context(), req.Phone, req.Password)
+	session, err := h.svc.Login(r.Context(), req.Phone, req.Password)
 	if err != nil {
 		h.writeError(w, r, err)
 		return
 	}
-	httpserver.WriteJSON(w, http.StatusOK, loginResponse{
-		AccessToken: token.Token,
-		TokenType:   "Bearer",
-		ExpiresIn:   int64(token.ExpiresIn / time.Second),
-	})
+	httpserver.WriteJSON(w, http.StatusOK, sessionResponse(session))
 }
 
 type bankAccountRequest struct {
@@ -247,6 +293,8 @@ func (h *Handler) writeError(w http.ResponseWriter, r *http.Request, err error) 
 		httpserver.WriteError(w, http.StatusNotFound, CodeRecipientNotFound, "No user is registered with this phone number.")
 	case errors.Is(err, ErrSelfRecipient):
 		httpserver.WriteError(w, http.StatusUnprocessableEntity, CodeSelfTransferNotAllowed, "You cannot send money to yourself.")
+	case errors.Is(err, ErrInvalidRefreshToken):
+		httpserver.WriteError(w, http.StatusUnauthorized, CodeInvalidRefreshToken, "The refresh token is invalid or expired. Please log in again.")
 	case errors.Is(err, ErrUnauthenticated):
 		httpserver.WriteError(w, http.StatusUnauthorized, CodeUnauthenticated, "Missing or invalid access token.")
 	case errors.Is(err, database.ErrTryAgain):

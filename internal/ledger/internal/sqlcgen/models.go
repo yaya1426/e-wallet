@@ -121,6 +121,17 @@ type ReconciliationDiscrepancy struct {
 	ResolutionNote pgtype.Text
 }
 
+type RefreshToken struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	FamilyID  uuid.UUID
+	TokenHash []byte
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	UsedAt    pgtype.Timestamptz
+	RevokedAt pgtype.Timestamptz
+}
+
 type Transaction struct {
 	ID                  uuid.UUID
 	Type                string

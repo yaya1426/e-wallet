@@ -54,6 +54,26 @@ func (q *Queries) GetBankAccountByUserID(ctx context.Context, userID uuid.UUID) 
 	return i, err
 }
 
+const getRefreshTokenForUpdate = `-- name: GetRefreshTokenForUpdate :one
+SELECT id, user_id, family_id, token_hash, created_at, expires_at, used_at, revoked_at FROM refresh_tokens WHERE token_hash = $1 FOR UPDATE
+`
+
+func (q *Queries) GetRefreshTokenForUpdate(ctx context.Context, tokenHash []byte) (RefreshToken, error) {
+	row := q.db.QueryRow(ctx, getRefreshTokenForUpdate, tokenHash)
+	var i RefreshToken
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.FamilyID,
+		&i.TokenHash,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.UsedAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
 const getUser = `-- name: GetUser :one
 SELECT id, phone_e164, full_name, password_hash, status, created_at FROM users WHERE id = $1
 `
@@ -88,6 +108,102 @@ func (q *Queries) GetUserByPhone(ctx context.Context, phoneE164 string) (User, e
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const insertRefreshToken = `-- name: InsertRefreshToken :exec
+INSERT INTO refresh_tokens (id, user_id, family_id, token_hash, created_at, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+`
+
+type InsertRefreshTokenParams struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	FamilyID  uuid.UUID
+	TokenHash []byte
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+func (q *Queries) InsertRefreshToken(ctx context.Context, arg InsertRefreshTokenParams) error {
+	_, err := q.db.Exec(ctx, insertRefreshToken,
+		arg.ID,
+		arg.UserID,
+		arg.FamilyID,
+		arg.TokenHash,
+		arg.CreatedAt,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
+const markRefreshTokenUsed = `-- name: MarkRefreshTokenUsed :exec
+UPDATE refresh_tokens SET used_at = $1::timestamptz WHERE id = $2
+`
+
+type MarkRefreshTokenUsedParams struct {
+	UsedAt time.Time
+	ID     uuid.UUID
+}
+
+func (q *Queries) MarkRefreshTokenUsed(ctx context.Context, arg MarkRefreshTokenUsedParams) error {
+	_, err := q.db.Exec(ctx, markRefreshTokenUsed, arg.UsedAt, arg.ID)
+	return err
+}
+
+const revokeRefreshFamily = `-- name: RevokeRefreshFamily :execrows
+UPDATE refresh_tokens SET revoked_at = $1::timestamptz
+ WHERE family_id = $2 AND revoked_at IS NULL
+`
+
+type RevokeRefreshFamilyParams struct {
+	Now      time.Time
+	FamilyID uuid.UUID
+}
+
+func (q *Queries) RevokeRefreshFamily(ctx context.Context, arg RevokeRefreshFamilyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeRefreshFamily, arg.Now, arg.FamilyID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const revokeUserRefreshFamilyByToken = `-- name: RevokeUserRefreshFamilyByToken :execrows
+UPDATE refresh_tokens SET revoked_at = $1::timestamptz
+ WHERE revoked_at IS NULL
+   AND family_id = (SELECT r.family_id FROM refresh_tokens r WHERE r.token_hash = $2 AND r.user_id = $3)
+`
+
+type RevokeUserRefreshFamilyByTokenParams struct {
+	Now       time.Time
+	TokenHash []byte
+	UserID    uuid.UUID
+}
+
+// Logout: revoke the session of this token, only if it belongs to the user.
+func (q *Queries) RevokeUserRefreshFamilyByToken(ctx context.Context, arg RevokeUserRefreshFamilyByTokenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeUserRefreshFamilyByToken, arg.Now, arg.TokenHash, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const revokeUserRefreshTokens = `-- name: RevokeUserRefreshTokens :execrows
+UPDATE refresh_tokens SET revoked_at = $1::timestamptz WHERE user_id = $2 AND revoked_at IS NULL
+`
+
+type RevokeUserRefreshTokensParams struct {
+	Now    time.Time
+	UserID uuid.UUID
+}
+
+func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, arg RevokeUserRefreshTokensParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeUserRefreshTokens, arg.Now, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const upsertBankAccount = `-- name: UpsertBankAccount :one

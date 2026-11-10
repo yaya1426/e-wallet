@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,8 +31,13 @@ type WalletOpener interface {
 type Config struct {
 	JWTSecret  string        // HS256 secret, at least 32 bytes (checked by config.ValidateServe)
 	JWTTTL     time.Duration // access token lifetime
+	RefreshTTL time.Duration // refresh token lifetime (TDR-018 §3); 0 means DefaultRefreshTTL
+	Log        *slog.Logger  // nil discards
 	BcryptCost int           // 0 means DefaultBcryptCost; tests use bcrypt.MinCost
 }
+
+// DefaultRefreshTTL is the refresh token lifetime when Config.RefreshTTL is 0 (30 days).
+const DefaultRefreshTTL = 30 * 24 * time.Hour
 
 // Service registers users, logs them in and verifies access tokens.
 type Service struct {
@@ -42,7 +48,9 @@ type Service struct {
 	cost    int
 	// dummyHash is compared against for unknown phones so they take as long as a wrong
 	// password (TDR-011, T004).
-	dummyHash []byte
+	dummyHash  []byte
+	refreshTTL time.Duration
+	log        *slog.Logger
 }
 
 // NewService returns the identity service.
@@ -51,17 +59,27 @@ func NewService(db *database.DB, wallets WalletOpener, clk clock.Clock, cfg Conf
 	if cost == 0 {
 		cost = DefaultBcryptCost
 	}
+	refreshTTL := cfg.RefreshTTL
+	if refreshTTL == 0 {
+		refreshTTL = DefaultRefreshTTL
+	}
+	log := cfg.Log
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
 	dummyHash, err := bcrypt.GenerateFromPassword([]byte(rand.Text()), cost)
 	if err != nil {
 		return nil, fmt.Errorf("identity: dummy hash: %w", err)
 	}
 	return &Service{
-		db:        db,
-		wallets:   wallets,
-		tokens:    tokens{secret: []byte(cfg.JWTSecret), ttl: cfg.JWTTTL, clock: clk},
-		clock:     clk,
-		cost:      cost,
-		dummyHash: dummyHash,
+		db:         db,
+		wallets:    wallets,
+		tokens:     tokens{secret: []byte(cfg.JWTSecret), ttl: cfg.JWTTTL, clock: clk},
+		clock:      clk,
+		cost:       cost,
+		dummyHash:  dummyHash,
+		refreshTTL: refreshTTL,
+		log:        log,
 	}, nil
 }
 
@@ -112,28 +130,28 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (Registration,
 // Login checks the credentials and returns an access token (PRD-001 US-2). An unknown phone
 // and a wrong password both return ErrInvalidCredentials after the same bcrypt work; a
 // disabled user with the right password returns ErrUserDisabled.
-func (s *Service) Login(ctx context.Context, phone, password string) (AccessToken, error) {
+func (s *Service) Login(ctx context.Context, phone, password string) (Session, error) {
 	// A malformed phone matches no user, and bcrypt would ignore bytes past 72, letting
 	// "password + any suffix" pass (review T004 #2). Both fail after the same bcrypt work.
 	if !egyptianMobile.MatchString(phone) || len(password) > maxPasswordBytes {
 		_ = bcrypt.CompareHashAndPassword(s.dummyHash, []byte(password))
-		return AccessToken{}, ErrInvalidCredentials
+		return Session{}, ErrInvalidCredentials
 	}
 	row, err := queries(s.db.Pool()).GetUserByPhone(ctx, phone)
 	if errors.Is(err, pgx.ErrNoRows) {
 		_ = bcrypt.CompareHashAndPassword(s.dummyHash, []byte(password))
-		return AccessToken{}, ErrInvalidCredentials
+		return Session{}, ErrInvalidCredentials
 	}
 	if err != nil {
-		return AccessToken{}, fmt.Errorf("identity: login lookup: %w", err)
+		return Session{}, fmt.Errorf("identity: login lookup: %w", err)
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(row.PasswordHash), []byte(password)); err != nil {
-		return AccessToken{}, ErrInvalidCredentials
+		return Session{}, ErrInvalidCredentials
 	}
 	if Status(row.Status) == StatusDisabled {
-		return AccessToken{}, ErrUserDisabled
+		return Session{}, ErrUserDisabled
 	}
-	return s.tokens.issue(row.ID)
+	return s.startSession(ctx, s.db.Pool(), row.ID)
 }
 
 // Authenticate verifies an access token and returns its user's ID. An invalid token or an

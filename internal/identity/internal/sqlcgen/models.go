@@ -44,10 +44,10 @@ type InboxEvent struct {
 	Attempts        int32
 	NextAttemptAt   time.Time
 	LockedBy        pgtype.Text
-	LockedUntil     pgtype.Timestamptz
+	LockedUntil     *time.Time
 	LastError       pgtype.Text
 	ReceivedAt      time.Time
-	ProcessedAt     pgtype.Timestamptz
+	ProcessedAt     *time.Time
 }
 
 type JobRun struct {
@@ -92,10 +92,10 @@ type OutboxEvent struct {
 	Attempts      int32
 	NextAttemptAt time.Time
 	LockedBy      pgtype.Text
-	LockedUntil   pgtype.Timestamptz
+	LockedUntil   *time.Time
 	LastError     pgtype.Text
 	CreatedAt     time.Time
-	ProcessedAt   pgtype.Timestamptz
+	ProcessedAt   *time.Time
 }
 
 type Posting struct {
@@ -117,8 +117,19 @@ type ReconciliationDiscrepancy struct {
 	Details        []byte
 	Status         string
 	CreatedAt      time.Time
-	ResolvedAt     pgtype.Timestamptz
+	ResolvedAt     *time.Time
 	ResolutionNote pgtype.Text
+}
+
+type RefreshToken struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	FamilyID  uuid.UUID
+	TokenHash []byte
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	UsedAt    *time.Time
+	RevokedAt *time.Time
 }
 
 type Transaction struct {
@@ -136,10 +147,10 @@ type Transaction struct {
 	Note                pgtype.Text
 	FailureCode         pgtype.Text
 	FailureMessage      pgtype.Text
-	LastReconciledAt    pgtype.Timestamptz
+	LastReconciledAt    *time.Time
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
-	CompletedAt         pgtype.Timestamptz
+	CompletedAt         *time.Time
 }
 
 type User struct {
