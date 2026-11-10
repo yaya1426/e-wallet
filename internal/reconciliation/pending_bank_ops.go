@@ -11,6 +11,7 @@ import (
 
 	"github.com/yaya1426/e-wallet/internal/bank"
 	"github.com/yaya1426/e-wallet/internal/discrepancy"
+	"github.com/yaya1426/e-wallet/internal/outbox"
 	"github.com/yaya1426/e-wallet/internal/payment"
 	"github.com/yaya1426/e-wallet/internal/platform/clock"
 	"github.com/yaya1426/e-wallet/internal/platform/database"
@@ -23,15 +24,28 @@ const JobPendingBankOps = "pending_bank_ops"
 // maxReportedErrors bounds the errors joined into a failed run's error.
 const maxReportedErrors = 5
 
-// PendingBankOpsDeps are what pending_bank_ops works with.
-type PendingBankOpsDeps struct {
+// Deps are what the reconciliation jobs work with.
+type Deps struct {
 	DB            *database.DB
 	Transactions  *transaction.Service
 	Payment       *payment.Service
 	Discrepancies *discrepancy.Service
+	Outbox        *outbox.Service // dead_outbox
 	Bank          bank.Gateway
 	Clock         clock.Clock
-	Log           *slog.Logger // nil discards
+	Log           *slog.Logger  // nil discards
+	Stuck         StuckObserver // stuck_alert's gauge; nil discards
+}
+
+// StuckObserver receives the number of stuck transactions per type (TOPUP, WITHDRAWAL).
+type StuckObserver interface {
+	ObserveStuckTransactions(txnType string, n int64)
+}
+
+// jobTimeout is a job's timeout for an interval: interval − 5 s, at least 1 s, at most the
+// interval.
+func jobTimeout(interval time.Duration) time.Duration {
+	return min(max(interval-5*time.Second, time.Second), interval)
 }
 
 // PendingBankOpsConfig are the job's thresholds (RECON_PENDING_*).
@@ -46,17 +60,17 @@ type PendingBankOpsConfig struct {
 // PRD-002/003 §7): it asks the bank about top-ups and withdrawals still PROCESSING after
 // MinAge and applies a final answer through payment.ApplyBankOutcome, the same code the
 // webhook uses. Its timeout is Interval − 5 s (at least 1 s, at most Interval).
-func PendingBankOps(d PendingBankOpsDeps, cfg PendingBankOpsConfig) Job {
+func PendingBankOps(d Deps, cfg PendingBankOpsConfig) Job {
 	if d.Log == nil {
 		d.Log = slog.New(slog.DiscardHandler)
 	}
-	timeout := min(max(cfg.Interval-5*time.Second, time.Second), cfg.Interval)
+	timeout := jobTimeout(cfg.Interval)
 	p := pendingBankOps{deps: d, cfg: cfg, log: d.Log.With(slog.String("job", JobPendingBankOps))}
 	return Job{Name: JobPendingBankOps, Interval: cfg.Interval, Timeout: timeout, Run: p.run}
 }
 
 type pendingBankOps struct {
-	deps PendingBankOpsDeps
+	deps Deps
 	cfg  PendingBankOpsConfig
 	log  *slog.Logger
 }

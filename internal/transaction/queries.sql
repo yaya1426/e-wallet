@@ -78,3 +78,18 @@ SELECT * FROM transactions
 -- name: MarkReconciled :execrows
 -- Bookkeeping only: neither the status nor updated_at change.
 UPDATE transactions SET last_reconciled_at = @at::timestamptz WHERE id = @id;
+
+-- name: ListStuck :many
+-- Top-ups and withdrawals not final long after they were created (TDR-009 stuck_alert).
+SELECT * FROM transactions
+ WHERE status IN ('PENDING', 'PROCESSING') AND type IN ('TOPUP', 'WITHDRAWAL')
+   AND created_at < @created_before::timestamptz
+ ORDER BY created_at, id
+ LIMIT @row_limit;
+
+-- name: CountStuck :many
+SELECT type, count(*)::bigint AS stuck
+  FROM transactions
+ WHERE status IN ('PENDING', 'PROCESSING') AND type IN ('TOPUP', 'WITHDRAWAL')
+   AND created_at < @created_before::timestamptz
+ GROUP BY type;

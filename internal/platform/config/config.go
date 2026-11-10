@@ -61,6 +61,11 @@ type Wallet struct {
 	ReconPendingMinAge   time.Duration `env:"RECON_PENDING_MIN_AGE"  envDefault:"10m"`
 	ReconPendingRecheck  time.Duration `env:"RECON_PENDING_RECHECK"  envDefault:"5m"`
 	ReconPendingBatch    int           `env:"RECON_PENDING_BATCH"    envDefault:"100"`
+	// dead_outbox and stuck_alert (T023, TDR-009 §2).
+	ReconDeadInterval  time.Duration `env:"RECON_DEAD_INTERVAL"  envDefault:"5m"`
+	ReconDeadBatch     int           `env:"RECON_DEAD_BATCH"     envDefault:"100"`
+	ReconStuckInterval time.Duration `env:"RECON_STUCK_INTERVAL" envDefault:"15m"`
+	ReconStuckAge      time.Duration `env:"RECON_STUCK_AGE"      envDefault:"24h"`
 
 	// Money limits in piasters (PRD-001 §5.6, T008); the wallet module applies them.
 	LimitTopUpMin      int64 `env:"LIMIT_TOPUP_MIN"       envDefault:"1000"`
@@ -186,6 +191,9 @@ func (cfg Wallet) validate() error {
 		{"RECON_PENDING_INTERVAL", cfg.ReconPendingInterval},
 		{"RECON_PENDING_MIN_AGE", cfg.ReconPendingMinAge},
 		{"RECON_PENDING_RECHECK", cfg.ReconPendingRecheck},
+		{"RECON_DEAD_INTERVAL", cfg.ReconDeadInterval},
+		{"RECON_STUCK_INTERVAL", cfg.ReconStuckInterval},
+		{"RECON_STUCK_AGE", cfg.ReconStuckAge},
 	}
 	for _, p := range positive {
 		if p.value <= 0 {
@@ -231,8 +239,13 @@ func (cfg Wallet) validate() error {
 			errs = append(errs, fmt.Errorf("config: %s must be at least 1, got %d", c.name, c.value))
 		}
 	}
-	if cfg.ReconPendingBatch < 1 || cfg.ReconPendingBatch > 1000 {
-		errs = append(errs, fmt.Errorf("config: RECON_PENDING_BATCH must be between 1 and 1000, got %d", cfg.ReconPendingBatch))
+	for _, b := range []struct {
+		name  string
+		value int
+	}{{"RECON_PENDING_BATCH", cfg.ReconPendingBatch}, {"RECON_DEAD_BATCH", cfg.ReconDeadBatch}} {
+		if b.value < 1 || b.value > 1000 {
+			errs = append(errs, fmt.Errorf("config: %s must be between 1 and 1000, got %d", b.name, b.value))
+		}
 	}
 	if cfg.DBTxMaxRetries < 0 {
 		errs = append(errs, fmt.Errorf("config: DB_TX_MAX_RETRIES must not be negative, got %d", cfg.DBTxMaxRetries))

@@ -201,6 +201,38 @@ func (s *Service) ListForReconciliation(ctx context.Context, q Querier, createdB
 	return out, nil
 }
 
+// ListStuck returns up to limit top-ups and withdrawals still PENDING or PROCESSING that were
+// created before createdBefore, oldest first (TDR-009 stuck_alert).
+func (s *Service) ListStuck(ctx context.Context, q Querier, createdBefore time.Time, limit int) ([]Transaction, error) {
+	rows, err := queries(q).ListStuck(ctx, sqlcgen.ListStuckParams{CreatedBefore: createdBefore, RowLimit: int32(max(0, min(limit, 1<<31-1)))})
+	if err != nil {
+		return nil, fmt.Errorf("transaction: list stuck: %w", err)
+	}
+	out := make([]Transaction, 0, len(rows))
+	for _, row := range rows {
+		txn, err := toTransaction(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, txn)
+	}
+	return out, nil
+}
+
+// CountStuck counts, per type (TOPUP, WITHDRAWAL), the transactions ListStuck would return
+// without a limit. Types with none are present with 0.
+func (s *Service) CountStuck(ctx context.Context, q Querier, createdBefore time.Time) (map[Type]int64, error) {
+	rows, err := queries(q).CountStuck(ctx, createdBefore)
+	if err != nil {
+		return nil, fmt.Errorf("transaction: count stuck: %w", err)
+	}
+	out := map[Type]int64{TypeTopUp: 0, TypeWithdrawal: 0}
+	for _, r := range rows {
+		out[Type(r.Type)] = r.Stuck
+	}
+	return out, nil
+}
+
 // MarkReconciled records that reconciliation checked the transaction at `at`. It changes
 // neither the status nor updated_at: it is bookkeeping, not a business change.
 func (s *Service) MarkReconciled(ctx context.Context, q Querier, txnID uuid.UUID, at time.Time) error {

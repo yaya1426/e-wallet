@@ -5,6 +5,7 @@ package reconciliation_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -18,11 +19,13 @@ import (
 	"github.com/yaya1426/e-wallet/internal/discrepancy"
 	"github.com/yaya1426/e-wallet/internal/ledger"
 	"github.com/yaya1426/e-wallet/internal/ledger/ledgertest"
+	"github.com/yaya1426/e-wallet/internal/outbox"
 	"github.com/yaya1426/e-wallet/internal/payment"
 	"github.com/yaya1426/e-wallet/internal/payment/paymenttest"
 	"github.com/yaya1426/e-wallet/internal/platform/clock/clocktest"
 	"github.com/yaya1426/e-wallet/internal/platform/database"
 	"github.com/yaya1426/e-wallet/internal/platform/money"
+	"github.com/yaya1426/e-wallet/internal/platform/queue"
 	"github.com/yaya1426/e-wallet/internal/reconciliation"
 	"github.com/yaya1426/e-wallet/internal/transaction"
 	"github.com/yaya1426/e-wallet/internal/wallet"
@@ -38,6 +41,8 @@ type reconFixture struct {
 	txns          *transaction.Service
 	discrepancies *discrepancy.Service
 	payment       *payment.Service
+	outbox        *outbox.Service
+	deps          reconciliation.Deps
 	user          uuid.UUID
 	wallet        wallet.Wallet
 	job           reconciliation.Job
@@ -54,9 +59,16 @@ func newReconFixture(t *testing.T, cfg reconciliation.PendingBankOpsConfig) reco
 	f.discrepancies = discrepancy.NewService(db.Pool(), clk, nil)
 	f.payment = payment.NewService(payment.Deps{DB: db, Wallets: wallets, Transactions: f.txns, Ledger: f.ledger,
 		Discrepancies: f.discrepancies, Clock: clk})
-	f.job = reconciliation.PendingBankOps(reconciliation.PendingBankOpsDeps{
-		DB: db, Transactions: f.txns, Payment: f.payment, Discrepancies: f.discrepancies, Bank: f.bank, Clock: clk,
-	}, cfg)
+	// The request events can only go DEAD: delivery always fails, after one attempt.
+	var err error
+	f.outbox, err = outbox.NewService(db.Pool(), clk, outbox.Config{Workers: 1, MaxAttempts: 1, PollInterval: 10 * time.Millisecond}, nil, nil)
+	require.NoError(t, err)
+	for _, typ := range []string{payment.EventTopUpRequested, payment.EventWithdrawalRequested} {
+		f.outbox.Register(typ, func(context.Context, queue.Job) queue.Result { return queue.Retry(errors.New("bank unreachable")) })
+	}
+	f.deps = reconciliation.Deps{DB: db, Transactions: f.txns, Payment: f.payment, Discrepancies: f.discrepancies,
+		Outbox: f.outbox, Bank: f.bank, Clock: clk}
+	f.job = reconciliation.PendingBankOps(f.deps, cfg)
 	f.user = uuid.New()
 	require.NoError(t, db.InTx(context.Background(), func(ctx context.Context, tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `INSERT INTO users (id, phone_e164, full_name, password_hash, created_at)
@@ -80,9 +92,9 @@ func egp(t *testing.T, minor int64) money.Money {
 	return m
 }
 
-// processing creates a top-up or (funded, reserved) withdrawal moved to PROCESSING with ref,
-// at the fake clock's current time.
-func (f reconFixture) processing(t *testing.T, typ transaction.Type, minor int64, ref string) transaction.Transaction {
+// pending creates a PENDING top-up or (funded, reserved) withdrawal at the fake clock's time,
+// with its bank request event in the outbox, as RequestTopUp / RequestWithdrawal do.
+func (f reconFixture) pending(t *testing.T, typ transaction.Type, minor int64) transaction.Transaction {
 	t.Helper()
 	if typ == transaction.TypeWithdrawal {
 		f.fund(t, minor)
@@ -92,10 +104,12 @@ func (f reconFixture) processing(t *testing.T, typ transaction.Type, minor int64
 		n := transaction.New{Type: typ, Status: transaction.StatusPending, InitiatorUserID: f.user,
 			Amount: egp(t, minor), IdempotencyKey: uuid.NewString(),
 			BankAccount: &transaction.BankAccountSnapshot{IBAN: "EG890003000100000000123450000", HolderName: "Test User"}}
+		event := payment.EventTopUpRequested
 		if typ == transaction.TypeTopUp {
 			n.DestinationWalletID = f.wallet.ID
 		} else {
 			n.SourceWalletID = f.wallet.ID
+			event = payment.EventWithdrawalRequested
 		}
 		var err error
 		if txn, err = f.txns.Create(ctx, tx, n); err != nil {
@@ -114,11 +128,45 @@ func (f reconFixture) processing(t *testing.T, typ transaction.Type, minor int64
 				return err
 			}
 		}
+		return f.outbox.Enqueue(ctx, tx, outbox.Event{AggregateType: "transaction", AggregateID: txn.ID, Type: event,
+			Payload: map[string]any{"transaction_id": txn.ID}})
+	}))
+	return txn
+}
+
+// processing creates a top-up or (funded, reserved) withdrawal moved to PROCESSING with ref,
+// at the fake clock's current time. Its request event is resolved as delivered.
+func (f reconFixture) processing(t *testing.T, typ transaction.Type, minor int64, ref string) transaction.Transaction {
+	t.Helper()
+	txn := f.pending(t, typ, minor)
+	require.NoError(t, f.db.InTx(context.Background(), func(ctx context.Context, tx pgx.Tx) error {
+		var err error
 		txn, err = f.txns.Transition(ctx, tx, txn.ID, transaction.StatusPending, transaction.StatusProcessing,
 			transaction.Patch{BankReference: &ref})
+		if err != nil {
+			return err
+		}
+		// The outbox delivered the request (here: marked so, since the test outbox only fails).
+		_, err = tx.Exec(ctx, `UPDATE outbox_events SET status = 'DONE' WHERE aggregate_id = $1`, txn.ID)
 		return err
 	}))
 	return txn
+}
+
+// killRequests runs the test outbox until every request event is DEAD.
+func (f reconFixture) killRequests(t *testing.T) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- f.outbox.Run(ctx) }()
+	require.Eventually(t, func() bool {
+		var open int
+		require.NoError(t, f.db.Pool().QueryRow(context.Background(),
+			`SELECT count(*) FROM outbox_events WHERE status IN ('PENDING', 'PROCESSING')`).Scan(&open))
+		return open == 0
+	}, 10*time.Second, 10*time.Millisecond)
+	cancel()
+	require.NoError(t, <-done)
 }
 
 // fund credits the wallet through a completed top-up.
@@ -415,10 +463,10 @@ func TestPendingBankOps_WebhookAlreadyApplied(t *testing.T) {
 }
 
 func TestPendingBankOps_JobShape(t *testing.T) {
-	j := reconciliation.PendingBankOps(reconciliation.PendingBankOpsDeps{}, defaultCfg)
+	j := reconciliation.PendingBankOps(reconciliation.Deps{}, defaultCfg)
 	assert.Equal(t, reconciliation.JobPendingBankOps, j.Name)
 	assert.Equal(t, time.Minute, j.Interval)
 	assert.Equal(t, 55*time.Second, j.Timeout)
-	short := reconciliation.PendingBankOps(reconciliation.PendingBankOpsDeps{}, reconciliation.PendingBankOpsConfig{Interval: 500 * time.Millisecond})
+	short := reconciliation.PendingBankOps(reconciliation.Deps{}, reconciliation.PendingBankOpsConfig{Interval: 500 * time.Millisecond})
 	assert.Equal(t, 500*time.Millisecond, short.Timeout, "never above the interval")
 }

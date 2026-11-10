@@ -53,5 +53,6 @@ Every unit of work is a task folder `TNNN-<slug>/` (e.g. `T001-project-bootstrap
 | [T020](T020-e2e-manual-guide/task.md) | End-to-end suite + manual test guide | Done |
 | [T021](T021-reconciliation-scheduler/task.md) | Reconciliation scheduler (job runner, `job_runs`, CLI) | Done |
 | [T022](T022-recon-pending-bank-ops/task.md) | Reconciliation job `pending_bank_ops` (lost webhooks) | Done |
+| [T023](T023-recon-dead-outbox-stuck/task.md) | Reconciliation jobs `dead_outbox` and `stuck_alert` | Done |
 
-Phase-1 order and dependencies: see the [roadmap](../roadmap.md). Phase 2 is planned task by task (T021 onward); T023 (`dead_outbox` + `stuck_alert`) is next to plan.
+Phase-1 order and dependencies: see the [roadmap](../roadmap.md). Phase 2 is planned task by task (T021 onward); T021–T023 cover reconciliation (P2-2/P2-3).

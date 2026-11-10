@@ -116,6 +116,56 @@ func (q *Queries) InsertEvent(ctx context.Context, arg InsertEventParams) error 
 	return err
 }
 
+const listDead = `-- name: ListDead :many
+SELECT id, aggregate_id, event_type, coalesce(last_error, '')::text AS last_error, attempts, created_at
+  FROM outbox_events
+ WHERE status = 'DEAD' AND event_type = ANY($1::text[])
+ ORDER BY created_at, id
+ LIMIT $2
+`
+
+type ListDeadParams struct {
+	EventTypes []string
+	RowLimit   int32
+}
+
+type ListDeadRow struct {
+	ID          uuid.UUID
+	AggregateID uuid.UUID
+	EventType   string
+	LastError   string
+	Attempts    int32
+	CreatedAt   time.Time
+}
+
+// DEAD events of the given types, oldest first, for reconciliation (TDR-009 dead_outbox).
+func (q *Queries) ListDead(ctx context.Context, arg ListDeadParams) ([]ListDeadRow, error) {
+	rows, err := q.db.Query(ctx, listDead, arg.EventTypes, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDeadRow
+	for rows.Next() {
+		var i ListDeadRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AggregateID,
+			&i.EventType,
+			&i.LastError,
+			&i.Attempts,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markDead = `-- name: MarkDead :execrows
 UPDATE outbox_events
    SET status = 'DEAD', last_error = $1::text, locked_by = NULL, locked_until = NULL
@@ -188,6 +238,27 @@ func (q *Queries) MarkRetry(ctx context.Context, arg MarkRetryParams) (int64, er
 		arg.ID,
 		arg.Attempts,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const resolveDead = `-- name: ResolveDead :execrows
+UPDATE outbox_events
+   SET status = 'DONE', processed_at = $1::timestamptz, last_error = $2::text
+ WHERE id = $3 AND status = 'DEAD'
+`
+
+type ResolveDeadParams struct {
+	Now  time.Time
+	Note string
+	ID   uuid.UUID
+}
+
+// Reconciliation handled a DEAD event: it is finished (DONE) with the note in last_error.
+func (q *Queries) ResolveDead(ctx context.Context, arg ResolveDeadParams) (int64, error) {
+	result, err := q.db.Exec(ctx, resolveDead, arg.Now, arg.Note, arg.ID)
 	if err != nil {
 		return 0, err
 	}

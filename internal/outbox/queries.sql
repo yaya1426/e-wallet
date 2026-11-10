@@ -42,3 +42,17 @@ UPDATE outbox_events
 SELECT count(*)::bigint AS pending, COALESCE(min(created_at), @now::timestamptz)::timestamptz AS oldest
   FROM outbox_events
  WHERE status IN ('PENDING', 'PROCESSING');
+
+-- name: ListDead :many
+-- DEAD events of the given types, oldest first, for reconciliation (TDR-009 dead_outbox).
+SELECT id, aggregate_id, event_type, coalesce(last_error, '')::text AS last_error, attempts, created_at
+  FROM outbox_events
+ WHERE status = 'DEAD' AND event_type = ANY(@event_types::text[])
+ ORDER BY created_at, id
+ LIMIT @row_limit;
+
+-- name: ResolveDead :execrows
+-- Reconciliation handled a DEAD event: it is finished (DONE) with the note in last_error.
+UPDATE outbox_events
+   SET status = 'DONE', processed_at = @now::timestamptz, last_error = @note::text
+ WHERE id = @id AND status = 'DEAD';

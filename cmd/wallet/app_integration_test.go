@@ -324,7 +324,7 @@ func (b *syncBuffer) String() string {
 func withReconJobs(t *testing.T, jobs ...reconciliation.Job) {
 	t.Helper()
 	previous := reconJobs
-	reconJobs = func(reconciliation.PendingBankOpsDeps, config.Wallet) []reconciliation.Job { return jobs }
+	reconJobs = func(reconciliation.Deps, config.Wallet) []reconciliation.Job { return jobs }
 	t.Cleanup(func() { reconJobs = previous })
 }
 
@@ -441,8 +441,10 @@ func TestReconcile_CLI_PendingBankOps(t *testing.T) {
 	code, _, stderr := runCLI(t, map[string]string{"DATABASE_URL": url}, "migrate", "up")
 	require.Equal(t, exitOK, code, stderr)
 
-	code, stdout, stderr := runCLI(t, map[string]string{"DATABASE_URL": url, "BANK_BASE_URL": testBankURL},
-		"reconcile", "--job=pending_bank_ops")
-	require.Equal(t, exitOK, code, stderr)
-	assert.Contains(t, stdout, "job pending_bank_ops SUCCESS: checked 0, fixed 0")
+	for _, job := range []string{"pending_bank_ops", "dead_outbox", "stuck_alert"} { // T022, T023 AC-10
+		code, stdout, stderr := runCLI(t, map[string]string{"DATABASE_URL": url, "BANK_BASE_URL": testBankURL},
+			"reconcile", "--job="+job)
+		require.Equal(t, exitOK, code, stderr)
+		assert.Contains(t, stdout, "job "+job+" SUCCESS: checked 0, fixed 0")
+	}
 }
