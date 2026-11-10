@@ -26,6 +26,9 @@ type Metrics struct {
 	outboxDead      prometheus.Counter
 	bankCalls       *prometheus.HistogramVec
 	webhooks        *prometheus.CounterVec
+	reconRuns       *prometheus.CounterVec
+	reconDuration   *prometheus.HistogramVec
+	reconItems      *prometheus.CounterVec
 }
 
 // New creates the registry and registers all collectors.
@@ -84,7 +87,21 @@ func New() *Metrics {
 		Name: "webhook_received_total",
 		Help: "Bank webhooks received, by result (stored, duplicate, invalid_signature, malformed, error).",
 	}, []string{"result"})
+	m.reconRuns = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "recon_job_runs_total",
+		Help: "Reconciliation job ticks, by job and status (success, failed, skipped: another instance held the lock).",
+	}, []string{"job", "status"})
+	m.reconDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "recon_job_duration_seconds",
+		Help:    "Duration of reconciliation job runs, by job.",
+		Buckets: prometheus.DefBuckets,
+	}, []string{"job"})
+	m.reconItems = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "recon_items_total",
+		Help: "Items handled by reconciliation jobs, by job and kind (checked, fixed).",
+	}, []string{"job", "kind"})
 	m.registry.MustRegister(
+		m.reconRuns, m.reconDuration, m.reconItems,
 		m.bankCalls,
 		m.queueJobs, m.queueClaimed, m.queueDuration,
 		m.outboxPending, m.outboxOldestAge, m.outboxDead, m.webhooks,
@@ -148,6 +165,22 @@ func (m *Metrics) ObserveOutboxDead() {
 // ObserveWebhookReceived counts one bank webhook by result (webhook.Observer).
 func (m *Metrics) ObserveWebhookReceived(result string) {
 	m.webhooks.WithLabelValues(result).Inc()
+}
+
+// ObserveReconRun counts one reconciliation tick; skipped ticks have no duration
+// (reconciliation.Observer).
+func (m *Metrics) ObserveReconRun(job, status string, duration time.Duration) {
+	m.reconRuns.WithLabelValues(job, status).Inc()
+	if status != "skipped" {
+		m.reconDuration.WithLabelValues(job).Observe(duration.Seconds())
+	}
+}
+
+// ObserveReconItems counts the items a reconciliation run checked and fixed
+// (reconciliation.Observer).
+func (m *Metrics) ObserveReconItems(job string, checked, fixed int) {
+	m.reconItems.WithLabelValues(job, "checked").Add(float64(checked))
+	m.reconItems.WithLabelValues(job, "fixed").Add(float64(fixed))
 }
 
 // ObserveBankCall records one bank gateway call (banksim.Observer).

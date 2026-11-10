@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -12,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -25,6 +27,7 @@ import (
 	"github.com/yaya1426/e-wallet/internal/platform/database/databasetest"
 	"github.com/yaya1426/e-wallet/internal/platform/logger"
 	"github.com/yaya1426/e-wallet/internal/platform/metrics"
+	"github.com/yaya1426/e-wallet/internal/reconciliation"
 	"github.com/yaya1426/e-wallet/internal/webhook"
 	"github.com/yaya1426/e-wallet/migrations"
 )
@@ -315,4 +318,115 @@ func (b *syncBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buf.String()
+}
+
+// withReconJobs registers jobs for the commands this test runs (T021 AC-6).
+func withReconJobs(t *testing.T, jobs ...reconciliation.Job) {
+	t.Helper()
+	previous := reconJobs
+	reconJobs = func(*api, config.Wallet) []reconciliation.Job { return jobs }
+	t.Cleanup(func() { reconJobs = previous })
+}
+
+// TestReconcile_CLI: `wallet reconcile --job=NAME` runs a job once (T021 AC-6).
+func TestReconcile_CLI(t *testing.T) {
+	url := databasetest.Shared(t).NewDatabase(t)
+	code, _, stderr := runCLI(t, map[string]string{"DATABASE_URL": url}, "migrate", "up")
+	require.Equal(t, exitOK, code, stderr)
+	var calls int
+	fail := false
+	withReconJobs(t, reconciliation.Job{Name: "cli_job", Interval: time.Hour, Timeout: time.Second,
+		Run: func(context.Context) reconciliation.Result {
+			calls++
+			if fail {
+				return reconciliation.Result{Checked: 1, Err: errors.New("bank is down")}
+			}
+			return reconciliation.Result{Checked: 2, Fixed: 1}
+		}})
+	env := map[string]string{"DATABASE_URL": url}
+
+	code, stdout, stderr := runCLI(t, env, "reconcile", "--job=cli_job")
+	require.Equal(t, exitOK, code, stderr)
+	assert.Contains(t, stdout, "job cli_job SUCCESS: checked 2, fixed 1")
+	assert.Equal(t, 1, calls)
+
+	fail = true
+	code, stdout, _ = runCLI(t, env, "reconcile", "--job", "cli_job")
+	assert.Equal(t, exitError, code)
+	assert.Contains(t, stdout, "job cli_job FAILED")
+
+	code, _, stderr = runCLI(t, env, "reconcile", "--job=nope")
+	assert.Equal(t, exitError, code)
+	assert.Contains(t, stderr, `unknown job: "nope"`)
+	assert.Contains(t, stderr, "cli_job", "lists the registered jobs")
+
+	db, err := database.Open(context.Background(), url, database.Options{Tx: database.DefaultTxSettings()})
+	require.NoError(t, err)
+	defer db.Close()
+	var runs int
+	require.NoError(t, db.Pool().QueryRow(context.Background(), `SELECT count(*) FROM job_runs WHERE job_name = 'cli_job'`).Scan(&runs))
+	assert.Equal(t, 2, runs)
+
+	// Another instance holds the lock: skipped, exit 0, nothing recorded.
+	conn, err := db.Pool().Acquire(context.Background())
+	require.NoError(t, err)
+	defer conn.Release()
+	_, err = conn.Exec(context.Background(), `SELECT pg_advisory_lock($1)`, reconciliation.LockKey("cli_job"))
+	require.NoError(t, err)
+	code, stdout, _ = runCLI(t, env, "reconcile", "--job=cli_job")
+	assert.Equal(t, exitOK, code)
+	assert.Contains(t, stdout, "job cli_job is running elsewhere; skipped")
+	assert.Equal(t, 2, calls)
+}
+
+// TestServe_ReconEnabledFlag: serve starts the scheduler by default and not with
+// RECON_ENABLED=false (T021 AC-7).
+func TestServe_ReconEnabledFlag(t *testing.T) {
+	url := databasetest.Shared(t).NewDatabase(t)
+	code, _, stderr := runCLI(t, map[string]string{"DATABASE_URL": url}, "migrate", "up")
+	require.Equal(t, exitOK, code, stderr)
+	ran := make(chan struct{}, 100)
+	withReconJobs(t, reconciliation.Job{Name: "serve_job", Interval: 50 * time.Millisecond, Timeout: 50 * time.Millisecond,
+		Run: func(context.Context) reconciliation.Result { ran <- struct{}{}; return reconciliation.Result{} }})
+
+	// serveUntil runs serve until ready(logs) holds (or 30 s pass), then stops it.
+	serveUntil := func(enabled string, ready func(logs string) bool) string {
+		ctx, cancel := context.WithCancel(context.Background())
+		var out syncBuffer
+		done := make(chan int, 1)
+		go func() {
+			done <- run(ctx, []string{"serve"}, map[string]string{
+				"DATABASE_URL": url, "HTTP_ADDR": "127.0.0.1:0", "JWT_SECRET": testJWTSecret, "BANK_BASE_URL": testBankURL,
+				"BANK_WEBHOOK_SECRET": testWebhookSecret, "RECON_ENABLED": enabled,
+			}, &out, io.Discard)
+		}()
+		assert.Eventually(t, func() bool { return ready(out.String()) }, 30*time.Second, 20*time.Millisecond)
+		cancel()
+		select {
+		case code := <-done:
+			require.Equal(t, exitOK, code)
+		case <-time.After(15 * time.Second):
+			t.Fatal("serve did not stop")
+		}
+		return out.String()
+	}
+
+	var waited bool
+	logs := serveUntil("false", func(logs string) bool {
+		if !strings.Contains(logs, `"msg":"reconciliation disabled"`) {
+			return false
+		}
+		if !waited { // give a wrongly started scheduler time to tick
+			time.Sleep(300 * time.Millisecond)
+			waited = true
+		}
+		return true
+	})
+	assert.Contains(t, logs, `"msg":"reconciliation disabled"`)
+	assert.Empty(t, ran, "no job ran")
+
+	logs = serveUntil("true", func(string) bool { return len(ran) > 0 })
+	assert.Contains(t, logs, `"msg":"reconciliation started"`)
+	assert.Contains(t, logs, "serve_job")
+	assert.NotEmpty(t, ran, "the job ran")
 }

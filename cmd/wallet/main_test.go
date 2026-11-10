@@ -47,6 +47,10 @@ func TestCLI_UsageErrors_Exit2(t *testing.T) {
 		{"serve", "extra"},
 		{"--unknown-flag"},
 		{"serve", "--unknown-flag"},
+		{"reconcile"},
+		{"reconcile", "--job="},
+		{"reconcile", "--job=x", "extra"},
+		{"migrate", "--job=x"},
 	}
 	for _, args := range tests {
 		code, _, stderr := runCLI(t, map[string]string{}, args...)

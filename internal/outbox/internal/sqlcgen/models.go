@@ -50,6 +50,17 @@ type InboxEvent struct {
 	ProcessedAt     *time.Time
 }
 
+type JobRun struct {
+	ID           uuid.UUID
+	JobName      string
+	StartedAt    time.Time
+	FinishedAt   time.Time
+	Status       string
+	ItemsChecked int32
+	ItemsFixed   int32
+	Error        *string
+}
+
 type JournalEntry struct {
 	ID            uuid.UUID
 	TransactionID uuid.UUID

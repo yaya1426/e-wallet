@@ -51,6 +51,10 @@ type Wallet struct {
 	InboxWorkers      int    `env:"INBOX_WORKERS"      envDefault:"4"`
 	InboxMaxAttempts  int    `env:"INBOX_MAX_ATTEMPTS" envDefault:"10"`
 
+	// Reconciliation (TDR-009, T021): with RECON_ENABLED=false this instance runs no
+	// reconciliation job (another instance does).
+	ReconEnabled bool `env:"RECON_ENABLED" envDefault:"true"`
+
 	// Money limits in piasters (PRD-001 §5.6, T008); the wallet module applies them.
 	LimitTopUpMin      int64 `env:"LIMIT_TOPUP_MIN"       envDefault:"1000"`
 	LimitTopUpMax      int64 `env:"LIMIT_TOPUP_MAX"       envDefault:"3000000"`
