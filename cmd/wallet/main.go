@@ -5,6 +5,7 @@
 //	wallet [serve]          run the HTTP API (default)
 //	wallet migrate up       apply pending database migrations
 //	wallet migrate status   print the schema version
+//	wallet reconcile --job=NAME   run one reconciliation job once
 package main
 
 import (
@@ -30,6 +31,8 @@ const usage = `usage:
   wallet [serve]          run the HTTP API (default)
   wallet migrate up       apply pending database migrations
   wallet migrate status   print the schema version
+  wallet reconcile --job=NAME
+                          run one reconciliation job once
 `
 
 func main() {
@@ -52,6 +55,10 @@ func run(ctx context.Context, args []string, environ map[string]string, stdout, 
 	}
 
 	sub := newFlagSet("wallet "+command, stderr)
+	var job *string
+	if command == "reconcile" {
+		job = sub.String("job", "", "name of the reconciliation job to run")
+	}
 	if err := sub.Parse(rest); err != nil {
 		return parseExit(err, stdout, stderr)
 	}
@@ -73,13 +80,18 @@ func run(ctx context.Context, args []string, environ map[string]string, stdout, 
 		default:
 			return usageError(stderr, fmt.Sprintf("unknown migrate action %q", sub.Arg(0)))
 		}
+	case "reconcile":
+		if sub.NArg() != 0 || *job == "" {
+			return usageError(stderr, "reconcile needs --job=NAME and no arguments")
+		}
+		return reconcile(ctx, *job, environ, stdout, stderr)
 	default:
 		return usageError(stderr, fmt.Sprintf("unknown command %q", command))
 	}
 }
 
-// newFlagSet returns a flag set that reports errors instead of exiting. No flags are
-// defined yet; parsing still rejects unknown flags and handles -h.
+// newFlagSet returns a flag set that reports errors instead of exiting; parsing rejects
+// unknown flags and handles -h.
 func newFlagSet(name string, stderr io.Writer) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)

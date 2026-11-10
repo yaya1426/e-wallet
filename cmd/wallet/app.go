@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -25,6 +26,7 @@ import (
 	"github.com/yaya1426/e-wallet/internal/platform/httpserver"
 	"github.com/yaya1426/e-wallet/internal/platform/logger"
 	"github.com/yaya1426/e-wallet/internal/platform/metrics"
+	"github.com/yaya1426/e-wallet/internal/reconciliation"
 	"github.com/yaya1426/e-wallet/internal/transaction"
 	"github.com/yaya1426/e-wallet/internal/transfer"
 	"github.com/yaya1426/e-wallet/internal/wallet"
@@ -91,11 +93,64 @@ func serve(ctx context.Context, environ map[string]string, stdout, stderr io.Wri
 		g.Go(func() error { return api.inbox.Run(gctx) })
 		log.Info("inbox processing started", slog.Int("workers", cfg.InboxWorkers))
 	}
+	if cfg.ReconEnabled {
+		g.Go(func() error { return api.recon.Run(gctx) })
+		log.Info("reconciliation started", slog.Any("jobs", api.recon.Jobs()))
+	} else {
+		// Another instance runs the jobs (the advisory locks make that safe either way).
+		log.Info("reconciliation disabled", slog.String("reason", "RECON_ENABLED=false"))
+	}
 	if err := g.Wait(); err != nil {
 		log.Error("wallet stopped with error", slog.Any("error", err))
 		return exitError
 	}
 	return exitOK
+}
+
+// reconcile runs one reconciliation job once (TDR-009 §1: the same function the scheduler
+// runs). It exits 0 when the run succeeded or another instance is running the job, 1 when
+// the run failed or the job is unknown.
+func reconcile(ctx context.Context, job string, environ map[string]string, stdout, stderr io.Writer) int {
+	cfg, log, ok := setup(environ, stdout, stderr)
+	if !ok {
+		return exitError
+	}
+	db, _, err := connect(ctx, cfg, log, nil)
+	if err != nil {
+		log.Error("reconcile failed", slog.Any("error", err))
+		return exitError
+	}
+	defer db.Close()
+	var gateway bank.Gateway
+	if cfg.BankBaseURL != "" {
+		if gateway, err = banksim.New(banksim.Config{BaseURL: cfg.BankBaseURL, Timeout: cfg.BankHTTPTimeout}, log, nil); err != nil {
+			log.Error("reconcile failed", slog.Any("error", err))
+			return exitError
+		}
+	}
+	a, err := newAPI(db, cfg, clock.System{}, log, nil, 0, gateway)
+	if err != nil {
+		log.Error("reconcile failed", slog.Any("error", err))
+		return exitError
+	}
+	ran, res, err := a.recon.RunOnce(ctx, job)
+	switch {
+	case errors.Is(err, reconciliation.ErrUnknownJob):
+		_, _ = fmt.Fprintf(stderr, "wallet: %v\n", err)
+		return exitError
+	case err != nil:
+		log.Error("reconcile failed", slog.Any("error", err))
+		return exitError
+	case !ran:
+		_, _ = fmt.Fprintf(stdout, "job %s is running elsewhere; skipped\n", job)
+		return exitOK
+	case res.Err != nil:
+		_, _ = fmt.Fprintf(stdout, "job %s FAILED: checked %d, fixed %d: %v\n", job, res.Checked, res.Fixed, res.Err)
+		return exitError
+	default:
+		_, _ = fmt.Fprintf(stdout, "job %s SUCCESS: checked %d, fixed %d\n", job, res.Checked, res.Fixed)
+		return exitOK
+	}
 }
 
 // migrateUp applies all pending migrations.
@@ -206,13 +261,19 @@ type api struct {
 	outbox      *outbox.Service      // delivered by serve when OUTBOX_ENABLED
 	inbox       *webhook.Service     // processed by serve when INBOX_ENABLED and a handler is set
 	webhook     *webhook.Handler
+	recon       *reconciliation.Scheduler // run by serve when RECON_ENABLED, or once by `reconcile`
 }
 
 // observer is what the modules report to: the metrics.
 type observer interface {
 	outbox.Observer
 	webhook.Observer
+	reconciliation.Observer
 }
+
+// reconJobs returns the reconciliation jobs to register (TDR-009 §2). A variable so tests can
+// register test jobs; the business jobs come with T022/T023.
+var reconJobs = func(*api, config.Wallet) []reconciliation.Job { return nil }
 
 // newAPI wires the modules. obs (the metrics) may be nil. bcryptCost 0 means
 // identity.DefaultBcryptCost (tests pass a lower cost to stay fast). gateway is the bank (the
@@ -253,7 +314,7 @@ func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logge
 	}
 	inboxSvc.SetHandler(paymentSvc) // bank outcomes are applied by payment (TDR-007 §3)
 	transferSvc := transfer.NewService(db, identitySvc, walletSvc, ledgerSvc, transactionSvc, idempotencySvc, limits(cfg), clk)
-	return &api{
+	a := &api{
 		identity: identity.NewHandler(identitySvc, identity.NewLoginLimiter(clk), log),
 		wallet:   wallet.NewHandler(walletSvc, log),
 		transfer: transfer.NewHandler(transferSvc, log),
@@ -264,7 +325,12 @@ func newAPI(db *database.DB, cfg config.Wallet, clk clock.Clock, log *slog.Logge
 		outbox:      outboxSvc,
 		inbox:       inboxSvc,
 		webhook:     webhook.NewHandler(inboxSvc, []byte(cfg.BankWebhookSecret), clk, log, obs),
-	}, nil
+	}
+	a.recon = reconciliation.NewScheduler(db, clk, log, obs)
+	for _, j := range reconJobs(a, cfg) {
+		a.recon.Register(j)
+	}
+	return a, nil
 }
 
 // limits maps the LIMIT_* configuration to the wallet limits (PRD-001 §5.6).

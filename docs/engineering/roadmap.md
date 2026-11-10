@@ -227,8 +227,8 @@ users, link IBANs, top up, P2P, withdraw, check history). Final compose env revi
 | # | Task | Sources |
 |---|------|---------|
 | P2-1 | Banksim fault scenarios `…0003`–`…0009`, statements, settlement balance, `bank.GetStatement`, outbox archive janitor | TDR-008 §3, TDR-006 §5 |
-| P2-2 | Reconciliation scheduler (advisory lock, `job_runs`, `RECON_ENABLED`) + `pending_bank_ops` job + `wallet reconcile --job` | TDR-009 §1–2, PRD-002/003 §7 |
-| P2-3 | `dead_outbox` and `stuck_alert` jobs (`BANK_UNAVAILABLE` failure + refund) | TDR-009, PRD-002 TU-BR-7, PRD-003 WD-BR-4 |
+| P2-2 | Reconciliation scheduler (advisory lock, `job_runs`, `RECON_ENABLED`) + `pending_bank_ops` job + `wallet reconcile --job` → split (2026-11-10) into **T021** (scheduler, CLI) and **T022** (`pending_bank_ops`) | TDR-009 §1–2, PRD-002/003 §7 |
+| P2-3 | `dead_outbox` and `stuck_alert` jobs (`BANK_UNAVAILABLE` failure + refund) → **T023** (to plan) | TDR-009, PRD-002 TU-BR-7, PRD-003 WD-BR-4 |
 | P2-4 | `ledger_integrity` and `daily_settlement` jobs, `GetStatement` | TDR-004 §6, TDR-009 |
 | P2-5 | Operator API `GET /internal/v1/discrepancies` with internal API key | TDR-009 §3, TDR-011 |
 | P2-6 | Resilience e2e: lost webhook, bank timeout ×3, 503 backoff, crash between commit and bank call | PRD-001 §9, PRD-002 AC-6..8 |

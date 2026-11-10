@@ -165,3 +165,27 @@ sql:
             go_type:
               type: string
               pointer: true
+  - engine: postgresql
+    schema: migrations
+    queries: internal/reconciliation/queries.sql
+    gen:
+      go:
+        package: sqlcgen
+        out: internal/reconciliation/internal/sqlcgen
+        sql_package: pgx/v5
+        emit_interface: false
+        overrides:
+          - db_type: uuid
+            go_type: github.com/google/uuid.UUID
+          - db_type: timestamptz
+            go_type: time.Time
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              type: time.Time
+              pointer: true
+          - db_type: text
+            nullable: true
+            go_type:
+              type: string
+              pointer: true

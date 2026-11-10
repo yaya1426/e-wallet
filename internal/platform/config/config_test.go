@@ -36,6 +36,8 @@ func TestConfig_LoadWallet_Defaults(t *testing.T) {
 
 		InboxEnabled: true, InboxWorkers: 4, InboxMaxAttempts: 10,
 
+		ReconEnabled: true,
+
 		LimitTopUpMin: 1000, LimitTopUpMax: 3_000_000,
 		LimitWithdrawalMin: 1000, LimitWithdrawalMax: 3_000_000,
 		LimitP2PMin: 100, LimitP2PMax: 3_000_000,
@@ -215,6 +217,15 @@ func TestConfig_Inbox(t *testing.T) {
 			assert.ErrorContains(t, cfg.ValidateServe(), "BANK_WEBHOOK_SECRET must be at least 32 bytes")
 		}
 	}
+}
+
+// T021 AC-7: RECON_ENABLED.
+func TestConfig_ReconEnabled(t *testing.T) {
+	cfg, err := LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL, "RECON_ENABLED": "false"})
+	require.NoError(t, err)
+	assert.False(t, cfg.ReconEnabled)
+	_, err = LoadWallet(map[string]string{"DATABASE_URL": testDatabaseURL, "RECON_ENABLED": "sometimes"})
+	assert.ErrorContains(t, err, "RECON_ENABLED")
 }
 
 // banksimEnv is the smallest valid banksim environment.
