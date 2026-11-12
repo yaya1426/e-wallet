@@ -121,9 +121,9 @@ This lifts the PRD-001 §3 non-goal "Mobile / web front-end". Mobile apps stay o
 - **UI-BR-21 Amount input** (top-up, withdrawal, P2P) is a text field with an `EGP` prefix. It
   accepts digits with an optional `.` and at most 2 decimals; commas and spaces are ignored
   (`1,250.5` → `125050` piasters). Zero, negatives, more than 2 decimals, any other character
-  or more than 12 digits before the point are rejected in the form. The UI does **not** check
-  the min/max limits itself, because they are server config (PRD-001 §5.6); `422
-  AMOUNT_OUT_OF_RANGE` shows "This amount is outside the allowed range for <top-ups |
+  or a value above `Number.MAX_SAFE_INTEGER` piasters are rejected in the form (`parseAmount`,
+  T030). The UI does **not** check the min/max limits itself, because they are server config
+  (PRD-001 §5.6); `422 AMOUNT_OUT_OF_RANGE` shows "This amount is outside the allowed range for <top-ups |
   withdrawals | transfers>."
 - **UI-BR-22 Linked account required.** Top-up and withdrawal first load the bank account; when
   none is linked the screen shows "Link a bank account first." with a link instead of the form.

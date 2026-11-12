@@ -26,6 +26,7 @@ export async function renderApp(path: string, { server = new FakeServer(), signe
   }
   const api = createApiClient(session, server.fetch, ORIGIN);
   const router = createMemoryRouter(routes, { initialEntries: [path] });
-  const utils = render(<App session={session} api={api} router={router} queryClient={createQueryClient()} />);
-  return { ...utils, env, session, server, router };
+  const queryClient = createQueryClient();
+  const utils = render(<App session={session} api={api} router={router} queryClient={queryClient} />);
+  return { ...utils, env, session, server, router, queryClient };
 }

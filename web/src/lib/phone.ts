@@ -16,3 +16,9 @@ export function normalizeEgyptianMobile(input: string): string | null {
   }
   return apiPattern.test(e164) ? e164 : null;
 }
+
+/** "+201001234567" → "+20 100 123 4567" for display; anything else is returned unchanged. */
+export function formatPhone(e164: string): string {
+  const m = /^\+20(\d{3})(\d{3})(\d{4})$/.exec(e164);
+  return m ? `+20 ${m[1]} ${m[2]} ${m[3]}` : e164;
+}
