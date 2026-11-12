@@ -57,6 +57,12 @@ export async function openAs(page: Page, user: ApiUser, path = '/') {
     [STORAGE_KEY, user.refreshToken] as const,
   );
   await page.goto(path);
+  // Wait until the app has rotated the seeded token: navigating away while that refresh is in
+  // flight would drop the new token and the next load would reuse the old one (reuse detection
+  // then ends the session, TDR-018 §3).
+  await expect
+    .poll(() => page.evaluate((key) => window.localStorage.getItem(key), STORAGE_KEY), { timeout: 10_000 })
+    .not.toContain(user.refreshToken);
 }
 
 export { registerViaApi };
@@ -111,4 +117,10 @@ export async function setFrozen(request: APIRequestContext, walletId: string, fr
     headers: { 'X-Internal-Api-Key': INTERNAL_API_KEY },
   });
   expect(res.status(), await res.text()).toBe(200);
+}
+
+export async function balanceOf(request: APIRequestContext, user: ApiUser): Promise<number> {
+  const res = await request.get('/v1/me/wallet', { headers: auth(user) });
+  expect(res.status()).toBe(200);
+  return ((await res.json()) as { available_balance_minor: number }).available_balance_minor;
 }

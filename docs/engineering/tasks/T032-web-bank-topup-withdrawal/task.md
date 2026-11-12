@@ -3,7 +3,7 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T032 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-12 |
 | Branch       | `task/T032-web-bank-topup-withdrawal` |
 | Depends on   | T030, T031 (app shell, transaction hooks/components) |
@@ -35,8 +35,8 @@ safe retries).
 | `web/src/features/money/BankAccountPage.tsx` | `GET /v1/me/bank-account` (404 → empty state) + form; `PUT` on submit. |
 | `web/src/features/money/MoneyFlowPage.tsx` | Shared flow for `kind: 'topup' │ 'withdrawal'` (amount, confirm, submit, status). `TopUpPage`/`WithdrawPage` are thin wrappers. |
 | `web/src/features/money/hooks.ts` | `useBankAccount()` (key `['bankAccount']`), `useLinkBankAccount()`, `useTopUp()`, `useWithdraw()`. |
-| `web/src/components/{AmountField,ConfirmDialog,TransactionStatusPanel}.tsx` | Shared, reused by T033. |
-| `web/src/lib/useIdempotentMutation.ts` | Wraps `useMutation`; holds the key in a ref; `confirm(vars)` makes a key with `crypto.randomUUID()` if none; `retry()` resends same vars + key; `reset()` drops it. |
+| `web/src/components/{AmountField,ConfirmDialog,TransactionStatusPanel}.tsx` | Shared, reused by T033. `ConfirmDialog` portals to `<body>`, makes the rest `inert`, stays open (busy) until the answer. |
+| `web/src/lib/useIdempotentRequest.ts` | (Built instead of `useIdempotentMutation`.) `submit(vars)` reuses the held key only for identical vars, else a new UUID v4; retryable failures keep the key (also in `sessionStorage` per flow); success/other 4xx drop it; `retry()` resends; `reset()` clears the answer only. |
 | `web/src/lib/iban.ts` | `normalizeIban`, `isValidEgyptianIban` (regex + mod-97 using chunked integer math, no BigInt needed), `formatIban` (groups of 4), `ibanLast4`. |
 | `web/src/i18n/en.ts` | Strings; `en.errors` adds `INVALID_IBAN`, `INVALID_HOLDER_NAME`, `BANK_ACCOUNT_NOT_FOUND`, `BANK_ACCOUNT_REQUIRED`, `AMOUNT_OUT_OF_RANGE` (per flow), `WALLET_LIMIT_EXCEEDED`, `INSUFFICIENT_FUNDS`, `DAILY_LIMIT_EXCEEDED`, `REQUEST_IN_PROGRESS`, `IDEMPOTENCY_KEY_REUSED` (generic), `INVALID_AMOUNT`. |
 | `web/e2e/money.spec.ts` | E2E below. |
@@ -77,33 +77,33 @@ None changed. Used: `GET/PUT /v1/me/bank-account`, `POST /v1/topups`, `POST /v1/
 Removing a linked account (no API), multiple accounts, showing limit values, P2P (T033).
 
 ## Acceptance Criteria
-- [ ] AC-1 — `isValidEgyptianIban` accepts `EG890003000100000000123450000` and the same with spaces/lower case; rejects a wrong check digit, wrong length, non-EG; `formatIban` groups by 4 (unit).
-- [ ] AC-2 — Given no linked account, when the user links a valid IBAN, then the card shows it; invalid IBAN → field error and no request (component + e2e).
-- [ ] AC-3 — Given a linked account, replacing asks for confirmation and saves only after Confirm (component).
-- [ ] AC-4 — Given no linked account, Top up and Withdraw show "Link a bank account first." (component + e2e).
-- [ ] AC-5 — Given IBAN ending `0000`, when the user tops up EGP 500, then the status goes Pending → "Top-up complete" and Home shows +500 (e2e).
-- [ ] AC-6 — Given IBAN ending `0001`, a top-up ends FAILED with "Your bank account didn't have enough money." and the balance is unchanged (e2e).
-- [ ] AC-7 — Given balance 500 and IBAN `0000`, a withdrawal of 200 lowers the available balance at once and ends "Withdrawal complete" (e2e).
-- [ ] AC-8 — Given IBAN `0001`, a withdrawal ends FAILED with "The bank account is closed." + "The money is back in your wallet." and the balance is restored (e2e).
-- [ ] AC-9 — Amount input: `abc`, `1.234`, `0` show their errors and send nothing; `1,250.5` is sent as `125050` (component asserting the request body).
-- [ ] AC-10 — Given the first submit fails with a network error / 503, when the user presses Try again, then the second request carries the **same** `Idempotency-Key`; after Back + edit a **new** key is used (component with mocked fetch).
-- [ ] AC-11 — 422 `AMOUNT_OUT_OF_RANGE`, `INSUFFICIENT_FUNDS`, `DAILY_LIMIT_EXCEEDED`, `WALLET_LIMIT_EXCEEDED` show their messages (component); `INSUFFICIENT_FUNDS` also e2e (withdraw more than the balance).
-- [ ] AC-12 — Given a frozen wallet (frozen via the internal API in e2e setup), Top up shows the frozen banner; a stale form submit getting 403 `WALLET_FROZEN` shows the frozen message (component + e2e).
-- [ ] AC-13 — Given the bank never answers within 60 s, the status panel shows the "taking longer" text with a link (component with fake timers).
-- [ ] AC-14 — Confirm button is disabled while submitting (double-click sends one request) (component).
-- [ ] AC-15 — Dialogs trap focus, close on Escape, and every field has a label (component).
-- [ ] AC-16 — `make web-lint web-test web-build web-e2e` pass; CI green.
+- [x] AC-1 — `isValidEgyptianIban` accepts `EG890003000100000000123450000` and the same with spaces/lower case; rejects a wrong check digit, wrong length, non-EG; `formatIban` groups by 4 (unit).
+- [x] AC-2 — Given no linked account, when the user links a valid IBAN, then the card shows it; invalid IBAN → field error and no request (component + e2e).
+- [x] AC-3 — Given a linked account, replacing asks for confirmation and saves only after Confirm (component).
+- [x] AC-4 — Given no linked account, Top up and Withdraw show "Link a bank account first." (component + e2e).
+- [x] AC-5 — Given IBAN ending `0000`, when the user tops up EGP 500, then the status goes Pending → "Top-up complete" and Home shows +500 (e2e).
+- [x] AC-6 — Given IBAN ending `0001`, a top-up ends FAILED with "Your bank account didn't have enough money." and the balance is unchanged (e2e).
+- [x] AC-7 — Given balance 500 and IBAN `0000`, a withdrawal of 200 lowers the available balance at once and ends "Withdrawal complete" (e2e).
+- [x] AC-8 — Given IBAN `0001`, a withdrawal ends FAILED with "The bank account is closed." + "The money is back in your wallet." and the balance is restored (e2e).
+- [x] AC-9 — Amount input: `abc`, `1.234`, `0` show their errors and send nothing; `1,250.5` is sent as `125050` (component asserting the request body).
+- [x] AC-10 — Given the first submit fails with a network error / 503, when the user presses Try again, then the second request carries the **same** `Idempotency-Key`; after Back + edit a **new** key is used (component with mocked fetch).
+- [x] AC-11 — 422 `AMOUNT_OUT_OF_RANGE`, `INSUFFICIENT_FUNDS`, `DAILY_LIMIT_EXCEEDED`, `WALLET_LIMIT_EXCEEDED` show their messages (component); `INSUFFICIENT_FUNDS` also e2e (withdraw more than the balance).
+- [x] AC-12 — Given a frozen wallet (frozen via the internal API in e2e setup), Top up shows the frozen banner; a stale form submit getting 403 `WALLET_FROZEN` shows the frozen message (component + e2e).
+- [x] AC-13 — Given the bank never answers within 60 s, the status panel shows the "taking longer" text with a link (component with fake timers).
+- [x] AC-14 — Confirm button is disabled while submitting (double-click sends one request) (component).
+- [x] AC-15 — Dialogs trap focus, close on Escape, and every field has a label (component).
+- [x] AC-16 — `make web-lint web-test web-build web-e2e` pass; CI green.
 
 ## Test Plan
 | AC | Type | Test |
 |----|------|------|
-| 1 | unit | `lib/iban.test.ts` |
+| 1 | unit | `lib/iban.test.ts`; `lib/useIdempotentRequest.test.ts` (key lifecycle) |
 | 2, 3 | component + e2e | `BankAccountPage.test.tsx`; `e2e/money.spec.ts` "link account" |
 | 4 | component + e2e | `MoneyFlowPage.test.tsx` "no bank account"; e2e |
 | 5–8 | e2e | `e2e/money.spec.ts` scenario tests (IBAN suffixes 0000/0001) |
 | 9, 10, 11, 13, 14 | component | `MoneyFlowPage.test.tsx`, `useIdempotentMutation.test.ts` |
 | 12 | component + e2e | e2e uses `POST /internal/v1/wallets/{id}/freeze` with the compose key |
-| 15 | component | `ConfirmDialog.test.tsx` |
+| 15 | component | `MoneyFlowPage.test.tsx` (dialog focus, Tab, Escape, inert), `BankAccountPage.test.tsx` |
 | 16 | CI | PR checks |
 
 ## Open Questions
@@ -123,3 +123,5 @@ Removing a linked account (no API), multiple accounts, showing limit values, P2P
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-12 | Ready | Planned; implementation after T031 |
+| 2026-11-12 | In Review | Implemented on top of T031; review round 1: 1 Major + 12 Minor/Nit, 12 fixed, 1 won't fix; round 2 Approved |
+| 2026-11-12 | Done | Finalized — PR opened (auto-merge) |
