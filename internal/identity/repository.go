@@ -32,10 +32,11 @@ func violates(err error, code, constraint string) bool {
 
 func toUser(row sqlcgen.User) User {
 	return User{
-		ID:        row.ID,
-		Phone:     row.PhoneE164,
-		FullName:  row.FullName,
-		Status:    Status(row.Status),
-		CreatedAt: row.CreatedAt,
+		ID:                row.ID,
+		Phone:             row.PhoneE164,
+		FullName:          row.FullName,
+		Status:            Status(row.Status),
+		CreatedAt:         row.CreatedAt,
+		PasswordChangedAt: row.PasswordChangedAt,
 	}
 }

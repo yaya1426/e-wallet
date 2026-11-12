@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"time"
 
@@ -37,7 +38,7 @@ type ResetCode struct {
 
 // IssueResetCode creates a 6-digit reset code for the user with phone, valid resetCodeTTL,
 // and invalidates the user's earlier unused codes. An invalid phone returns ErrInvalidPhone,
-// an unknown one ErrUserNotFound.
+// an unknown one ErrUserNotFound, a disabled user ErrUserDisabled (TDR-021 §2).
 func (s *Service) IssueResetCode(ctx context.Context, phone string) (ResetCode, error) {
 	if !ValidPhone(phone) {
 		return ResetCode{}, ErrInvalidPhone
@@ -47,7 +48,10 @@ func (s *Service) IssueResetCode(ctx context.Context, phone string) (ResetCode, 
 		return ResetCode{}, fmt.Errorf("identity: reset code: %w", err)
 	}
 	code := fmt.Sprintf("%06d", n.Int64())
-	var out ResetCode
+	var (
+		out    ResetCode
+		userID uuid.UUID
+	)
 	err = s.db.InTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		q := queries(tx)
 		user, err := q.GetUserByPhone(ctx, phone)
@@ -57,6 +61,10 @@ func (s *Service) IssueResetCode(ctx context.Context, phone string) (ResetCode, 
 		if err != nil {
 			return fmt.Errorf("identity: reset user: %w", err)
 		}
+		if Status(user.Status) == StatusDisabled {
+			return ErrUserDisabled
+		}
+		userID = user.ID
 		now := s.now()
 		if err := q.InvalidateResetCodes(ctx, sqlcgen.InvalidateResetCodesParams{Now: now, UserID: user.ID}); err != nil {
 			return fmt.Errorf("identity: invalidate reset codes: %w", err)
@@ -69,14 +77,16 @@ func (s *Service) IssueResetCode(ctx context.Context, phone string) (ResetCode, 
 	if err != nil {
 		return ResetCode{}, err
 	}
-	s.log.InfoContext(ctx, "password reset code issued") // never the code or the phone
+	s.log.InfoContext(ctx, "password reset code issued", slog.String("user_id", userID.String())) // never the code or the phone
 	return out, nil
 }
 
 // ResetPassword sets a new password with a code from IssueResetCode and signs the user out
 // everywhere (RevokeAllSessions). An invalid new password returns ErrInvalidPassword without
-// counting an attempt; anything wrong with the phone or the code returns ErrInvalidResetCode.
-// A wrong code counts against the code; the fifth wrong attempt ends it.
+// counting an attempt; anything wrong with the phone or the code, or a disabled user
+// (TDR-021 §2, no attempt counted), returns ErrInvalidResetCode. A wrong code counts against
+// the code; the fifth wrong attempt ends it. The change also ends the user's access tokens
+// (users.password_changed_at, TDR-021 §1).
 func (s *Service) ResetPassword(ctx context.Context, phone, code, newPassword string) error {
 	if n := len(newPassword); n < minPasswordBytes || n > maxPasswordBytes {
 		return ErrInvalidPassword
@@ -88,7 +98,10 @@ func (s *Service) ResetPassword(ctx context.Context, phone, code, newPassword st
 	if err != nil {
 		return fmt.Errorf("identity: hash password: %w", err)
 	}
-	var wrong bool
+	var (
+		wrong  bool
+		userID uuid.UUID
+	)
 	err = s.db.InTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		wrong = false
 		q := queries(tx)
@@ -99,6 +112,10 @@ func (s *Service) ResetPassword(ctx context.Context, phone, code, newPassword st
 		if err != nil {
 			return fmt.Errorf("identity: reset user: %w", err)
 		}
+		if Status(user.Status) == StatusDisabled {
+			return ErrInvalidResetCode // same answer as any other failure; nothing counted
+		}
+		userID = user.ID
 		now := s.now()
 		active, err := q.GetActiveResetCodeForUpdate(ctx, sqlcgen.GetActiveResetCodeForUpdateParams{UserID: user.ID, Now: now})
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -114,7 +131,7 @@ func (s *Service) ResetPassword(ctx context.Context, phone, code, newPassword st
 		if err := q.MarkResetCodeUsed(ctx, sqlcgen.MarkResetCodeUsedParams{Now: now, ID: active.ID}); err != nil {
 			return fmt.Errorf("identity: use reset code: %w", err)
 		}
-		if err := q.UpdatePasswordHash(ctx, sqlcgen.UpdatePasswordHashParams{PasswordHash: string(hash), ID: user.ID}); err != nil {
+		if err := q.UpdatePasswordHash(ctx, sqlcgen.UpdatePasswordHashParams{PasswordHash: string(hash), ChangedAt: now, ID: user.ID}); err != nil {
 			return fmt.Errorf("identity: update password: %w", err)
 		}
 		return s.RevokeAllSessions(ctx, tx, user.ID)
@@ -123,9 +140,10 @@ func (s *Service) ResetPassword(ctx context.Context, phone, code, newPassword st
 		return err
 	}
 	if wrong { // the attempt was counted and committed
+		s.log.InfoContext(ctx, "password reset: wrong code", slog.String("user_id", userID.String()))
 		return ErrInvalidResetCode
 	}
-	s.log.InfoContext(ctx, "password reset")
+	s.log.InfoContext(ctx, "password reset", slog.String("user_id", userID.String()))
 	return nil
 }
 

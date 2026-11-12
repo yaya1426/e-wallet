@@ -105,3 +105,17 @@ func TestSpec_CataloguesEveryErrorCode(t *testing.T) {
 		assert.True(t, strings.Contains(string(raw), "`"+code+"`"), "error code %s is missing from %s", code, specFile)
 	}
 }
+
+// T029 AC-8 (TDR-021 §2): the operator reset-code endpoint documents 403 for a disabled user.
+func TestSpec_ResetCodeRefusesDisabledUser(t *testing.T) {
+	_, doc := loadSpec(t)
+	model, err := doc.BuildV3Model()
+	require.NoError(t, err)
+	item, ok := model.Model.Paths.PathItems.Get("/internal/v1/users/{phone}/password-reset-code")
+	require.True(t, ok)
+	op := item.GetOperations().GetOrZero("post")
+	require.NotNil(t, op)
+	resp, ok := op.Responses.Codes.Get("403")
+	require.True(t, ok, "403 documented")
+	assert.Contains(t, resp.Description, identity.CodeUserDisabled)
+}

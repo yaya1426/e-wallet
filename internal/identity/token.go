@@ -36,8 +36,9 @@ func (t tokens) issue(userID uuid.UUID) (AccessToken, error) {
 }
 
 // verify checks the signature (HS256 only; any other alg is rejected), exp and iat, and
-// returns the user ID in sub. Every failure wraps ErrUnauthenticated.
-func (t tokens) verify(token string) (uuid.UUID, error) {
+// returns the user ID in sub and the issue time in iat (whole seconds). Every failure wraps
+// ErrUnauthenticated.
+func (t tokens) verify(token string) (uuid.UUID, time.Time, error) {
 	var claims jwt.RegisteredClaims
 	_, err := jwt.ParseWithClaims(token, &claims,
 		func(*jwt.Token) (any, error) { return t.secret, nil },
@@ -47,11 +48,14 @@ func (t tokens) verify(token string) (uuid.UUID, error) {
 		jwt.WithIssuedAt(),
 	)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("%w: %w", ErrUnauthenticated, err)
+		return uuid.Nil, time.Time{}, fmt.Errorf("%w: %w", ErrUnauthenticated, err)
 	}
 	userID, err := uuid.Parse(claims.Subject)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("%w: %w", ErrUnauthenticated, errors.Join(errors.New("bad sub"), err))
+		return uuid.Nil, time.Time{}, fmt.Errorf("%w: %w", ErrUnauthenticated, errors.Join(errors.New("bad sub"), err))
 	}
-	return userID, nil
+	if claims.IssuedAt == nil {
+		return uuid.Nil, time.Time{}, fmt.Errorf("%w: missing iat", ErrUnauthenticated)
+	}
+	return userID, claims.IssuedAt.Time, nil
 }

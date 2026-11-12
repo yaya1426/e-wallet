@@ -69,4 +69,5 @@ UPDATE password_reset_codes
 UPDATE password_reset_codes SET used_at = @now::timestamptz WHERE id = @id;
 
 -- name: UpdatePasswordHash :exec
-UPDATE users SET password_hash = @password_hash WHERE id = @id;
+-- A password change also ends access tokens issued before it (TDR-021 §1).
+UPDATE users SET password_hash = @password_hash, password_changed_at = @changed_at::timestamptz WHERE id = @id;

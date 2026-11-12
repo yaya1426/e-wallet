@@ -50,6 +50,7 @@ erDiagram
 | full_name | text NOT NULL | |
 | password_hash | text NOT NULL | bcrypt |
 | status | text NOT NULL | `ACTIVE` / `DISABLED` |
+| password_changed_at | timestamptz NULL | last password change; access tokens issued before it are rejected (TDR-021) |
 | created_at | timestamptz | |
 
 ### bank_accounts

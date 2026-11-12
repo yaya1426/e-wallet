@@ -3,8 +3,10 @@
 package identity_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -276,4 +278,54 @@ func TestLinkBankAccount_ValidationOrder(t *testing.T) {
 	assert.ErrorIs(t, err, identity.ErrInvalidHolderName)
 	_, err = svc.GetBankAccount(ctx, f.db.Pool(), reg.User.ID)
 	assert.ErrorIs(t, err, identity.ErrBankAccountNotFound, "nothing stored on a validation error")
+}
+
+// T029 AC-7 (TDR-021 §3): issue and reset log the user id and never the code, phone or password.
+func TestPasswordReset_LogsUserIDNoSecrets(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	var buf bytes.Buffer
+	svc, err := identity.NewService(f.db, f.wallets, f.clock, identity.Config{
+		JWTSecret: secret, JWTTTL: 15 * time.Minute, BcryptCost: bcrypt.MinCost,
+		Log: slog.New(slog.NewJSONHandler(&buf, nil)),
+	})
+	require.NoError(t, err)
+	const phone, newPassword = "+201001234567", "brand-new-pass-1"
+	reg, err := svc.Register(ctx, input(phone))
+	require.NoError(t, err)
+
+	rc, err := svc.IssueResetCode(ctx, phone)
+	require.NoError(t, err)
+	wrong := "000000"
+	if rc.Code == wrong {
+		wrong = "111111"
+	}
+	require.ErrorIs(t, svc.ResetPassword(ctx, phone, wrong, newPassword), identity.ErrInvalidResetCode)
+	require.NoError(t, svc.ResetPassword(ctx, phone, rc.Code, newPassword))
+
+	logs := buf.String()
+	for _, msg := range []string{"password reset code issued", "password reset: wrong code", `"msg":"password reset"`} {
+		assert.Contains(t, logs, msg)
+	}
+	assert.Equal(t, 3, strings.Count(logs, `"user_id":"`+reg.User.ID.String()+`"`), logs)
+	for _, secret := range []string{rc.Code, phone, strings.TrimPrefix(phone, "+"), newPassword, "s3cret-pass"} {
+		assert.NotContains(t, logs, secret)
+	}
+}
+
+// T029 AC-3 (TDR-021 §2), service level.
+func TestPasswordReset_DisabledUserRefused(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	svc := f.service(t, f.wallets)
+	_, err := svc.Register(ctx, input("+201001234567"))
+	require.NoError(t, err)
+	rc, err := svc.IssueResetCode(ctx, "+201001234567")
+	require.NoError(t, err)
+	_, err = f.db.Pool().Exec(ctx, `UPDATE users SET status = 'DISABLED' WHERE phone_e164 = '+201001234567'`)
+	require.NoError(t, err)
+
+	_, err = svc.IssueResetCode(ctx, "+201001234567")
+	assert.ErrorIs(t, err, identity.ErrUserDisabled)
+	assert.ErrorIs(t, svc.ResetPassword(ctx, "+201001234567", rc.Code, "brand-new-pass-1"), identity.ErrInvalidResetCode)
 }

@@ -2,7 +2,7 @@
 
 | Field      | Value |
 |------------|-------|
-| Status     | Accepted (2026-11-10, MVP hardening) |
+| Status     | Accepted (2026-11-10, MVP hardening). §4 amended by [TDR-021](TDR-021-password-reset-hardening.md) (2026-11-12): a reset also ends access tokens; disabled users cannot reset |
 | Date       | 2026-11-10 |
 | Deciders   | Yahya Elaraby |
 | Related    | Extends TDR-011 (lifts "not in phase 1: refresh tokens, password reset, sessions revocation"); TDR-009 §3; TDR-013; TDR-017 |

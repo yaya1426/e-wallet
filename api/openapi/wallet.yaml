@@ -245,7 +245,8 @@ paths:
       description: |
         Operator-assisted reset (TDR-018 §4): the code (6 digits, 15 minutes, at most 5 wrong
         attempts) comes from `POST /internal/v1/users/{phone}/password-reset-code`. Success signs
-        the user out of every session (refresh tokens revoked). Shares the login rate limit.
+        the user out everywhere: refresh tokens are revoked and access tokens issued before the
+        reset stop working (TDR-021). Shares the login rate limit.
       requestBody:
         required: true
         content:
@@ -274,7 +275,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: '`INVALID_RESET_CODE`: unknown phone, or the code is wrong, expired, used or dead after 5 wrong attempts.'
+          description: '`INVALID_RESET_CODE`: unknown phone, disabled user, or the code is wrong, expired, used or dead after 5 wrong attempts. Always the same body.'
           headers:
             X-Request-ID:
               $ref: '#/components/headers/RequestID'
@@ -1098,7 +1099,7 @@ paths:
       tags: [internal]
       operationId: issuePasswordResetCode
       summary: Issue a one-time password reset code for a user (give it to them out of band)
-      description: Valid 15 minutes; issuing a new code invalidates the user's earlier unused codes (TDR-018 §4).
+      description: Valid 15 minutes; issuing a new code invalidates the user's earlier unused codes (TDR-018 §4). Refused for a disabled user (TDR-021).
       security:
         - internalKey: []
       parameters:
@@ -1136,6 +1137,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/UserDisabled'
         '404':
           description: '`USER_NOT_FOUND`.'
           headers:
@@ -1246,7 +1249,7 @@ components:
         type: string
   responses:
     Unauthenticated:
-      description: '`UNAUTHENTICATED`: missing, malformed, badly signed or expired token.'
+      description: '`UNAUTHENTICATED`: missing, malformed, badly signed or expired token, or one issued before the user''s last password change (TDR-021).'
       headers:
         X-Request-ID:
           $ref: '#/components/headers/RequestID'

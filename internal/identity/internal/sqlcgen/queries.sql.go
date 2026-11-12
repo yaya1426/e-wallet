@@ -104,7 +104,7 @@ func (q *Queries) GetRefreshTokenForUpdate(ctx context.Context, tokenHash []byte
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, phone_e164, full_name, password_hash, status, created_at FROM users WHERE id = $1
+SELECT id, phone_e164, full_name, password_hash, status, created_at, password_changed_at FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
@@ -117,12 +117,13 @@ func (q *Queries) GetUser(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.PasswordHash,
 		&i.Status,
 		&i.CreatedAt,
+		&i.PasswordChangedAt,
 	)
 	return i, err
 }
 
 const getUserByPhone = `-- name: GetUserByPhone :one
-SELECT id, phone_e164, full_name, password_hash, status, created_at FROM users WHERE phone_e164 = $1
+SELECT id, phone_e164, full_name, password_hash, status, created_at, password_changed_at FROM users WHERE phone_e164 = $1
 `
 
 func (q *Queries) GetUserByPhone(ctx context.Context, phoneE164 string) (User, error) {
@@ -135,6 +136,7 @@ func (q *Queries) GetUserByPhone(ctx context.Context, phoneE164 string) (User, e
 		&i.PasswordHash,
 		&i.Status,
 		&i.CreatedAt,
+		&i.PasswordChangedAt,
 	)
 	return i, err
 }
@@ -309,16 +311,18 @@ func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, arg RevokeUserRef
 }
 
 const updatePasswordHash = `-- name: UpdatePasswordHash :exec
-UPDATE users SET password_hash = $1 WHERE id = $2
+UPDATE users SET password_hash = $1, password_changed_at = $2::timestamptz WHERE id = $3
 `
 
 type UpdatePasswordHashParams struct {
 	PasswordHash string
+	ChangedAt    time.Time
 	ID           uuid.UUID
 }
 
+// A password change also ends access tokens issued before it (TDR-021 §1).
 func (q *Queries) UpdatePasswordHash(ctx context.Context, arg UpdatePasswordHashParams) error {
-	_, err := q.db.Exec(ctx, updatePasswordHash, arg.PasswordHash, arg.ID)
+	_, err := q.db.Exec(ctx, updatePasswordHash, arg.PasswordHash, arg.ChangedAt, arg.ID)
 	return err
 }
 
