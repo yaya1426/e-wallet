@@ -30,6 +30,7 @@ export const en = {
     codeFormat: 'Enter the 6-digit code.',
     passwordsDiffer: 'The passwords do not match.',
     required: 'This field is required.',
+    noteLength: 'Note must be at most 140 characters.',
   },
   login: {
     title: 'Log in',
@@ -78,8 +79,6 @@ export const en = {
     send: 'Send',
     topUp: 'Top up',
     withdraw: 'Withdraw',
-    comingSoon: 'Coming soon',
-    comingSoonBody: 'This screen is not available yet.',
   },
   copy: {
     copy: 'Copy',
@@ -179,6 +178,25 @@ export const en = {
       transfer: 'This amount is outside the allowed range for transfers.',
     },
   },
+  transfer: {
+    title: 'Send money',
+    step: (n: number) => `Step ${n} of 3`,
+    recipientHeading: 'Who are you sending to?',
+    amountHeading: 'How much?',
+    confirmHeading: 'Check and send',
+    phone: 'Recipient mobile number',
+    continue: 'Continue',
+    change: 'Change',
+    back: 'Back',
+    send: 'Send',
+    sendTo: (name: string) => `Send to ${name}`,
+    note: 'Note (optional)',
+    noteCounter: (n: number) => `${n}/140`,
+    notEnough: "You don't have enough balance.",
+    summary: { to: 'To', amount: 'Amount', note: 'Note' },
+    sent: (amount: string, name: string) => `Sent ${amount} to ${name}`,
+    sendAgain: 'Send again',
+  },
   bankFailures: {
     INSUFFICIENT_FUNDS: "Your bank account didn't have enough money.",
     INVALID_ACCOUNT: 'The bank account details are not valid.',
@@ -214,5 +232,9 @@ export const en = {
     TRY_AGAIN: 'The server was busy. Please try again.',
     WALLET_FROZEN:
       "Your wallet is frozen. You can still receive money, but you can't top up, withdraw or send. Please contact support.",
+    RECIPIENT_NOT_FOUND: 'No wallet uses this number.',
+    SELF_TRANSFER_NOT_ALLOWED: "You can't send money to yourself.",
+    RECIPIENT_LIMIT_EXCEEDED: "The recipient can't receive this amount right now.",
+    INVALID_NOTE: 'Note must be at most 140 characters.',
   } as Record<string, string>,
 } as const;

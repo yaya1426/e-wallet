@@ -7,11 +7,10 @@ import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
 import { HistoryPage } from '@/features/home/HistoryPage';
 import { BankAccountPage } from '@/features/money/BankAccountPage';
 import { TopUpPage, WithdrawPage } from '@/features/money/MoneyFlowPage';
+import { SendPage } from '@/features/transfer/SendPage';
 import { HomePage } from '@/features/home/HomePage';
 import { TransactionDetailPage } from '@/features/home/TransactionDetailPage';
 import { NotFoundPage } from '@/features/NotFoundPage';
-import { en } from '@/i18n/en';
-import { ComingSoonPage } from './ComingSoonPage';
 
 export const routes: RouteObject[] = [
   { path: '/login', element: <RedirectIfAuthed><LoginPage /></RedirectIfAuthed> },
@@ -26,7 +25,7 @@ export const routes: RouteObject[] = [
       { path: '/bank-account', element: <BankAccountPage /> },
       { path: '/top-up', element: <TopUpPage /> },
       { path: '/withdraw', element: <WithdrawPage /> },
-      { path: '/send', element: <ComingSoonPage title={en.nav.send} /> },
+      { path: '/send', element: <SendPage /> },
     ],
   },
   { path: '*', element: <NotFoundPage /> },

@@ -23,3 +23,15 @@ export function validateResetCode(code: string): ValidationKey | null {
 export function validateConfirmation(password: string, confirmation: string): ValidationKey | null {
   return password === confirmation ? null : 'passwordsDiffer';
 }
+
+export const NOTE_MAX = 140;
+
+/** Characters the API counts for a transfer note: code points after trimming (Go TrimSpace + RuneCount). */
+export function noteLength(note: string): number {
+  return [...note.trim()].length;
+}
+
+/** Optional transfer note: at most 140 characters after trimming (PRD-005 UI-BR-28). */
+export function validateNote(note: string): ValidationKey | null {
+  return noteLength(note) > NOTE_MAX ? 'noteLength' : null;
+}

@@ -33,3 +33,16 @@ describe('validation mirrors the API (AC-4, PRD-005 UI-BR-3)', () => {
     expect(validateConfirmation('secret123', 'secret124')).toBe('passwordsDiffer');
   });
 });
+
+describe('validateNote (T033 AC-3, PRD-005 UI-BR-28)', () => {
+  it('allows empty and up to 140 characters after trimming, counted as code points', async () => {
+    const { validateNote, noteLength } = await import('./validation');
+    expect(validateNote('')).toBeNull();
+    expect(validateNote('x'.repeat(140))).toBeNull();
+    expect(validateNote('x'.repeat(141))).toBe('noteLength');
+    expect(validateNote(`  ${'x'.repeat(140)}  `)).toBeNull();
+    expect(validateNote('😀'.repeat(140))).toBeNull(); // 280 UTF-16 units, 140 code points
+    expect(validateNote('😀'.repeat(141))).toBe('noteLength');
+    expect(noteLength('  غداء  ')).toBe(4);
+  });
+});

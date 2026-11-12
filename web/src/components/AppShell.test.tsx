@@ -23,12 +23,6 @@ describe('AppShell (AC-11)', () => {
     expect(within(nav).getByRole('link', { name: 'History' })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('later screens show a placeholder until their task lands', async () => {
-    await renderApp('/send', { server: server(), signedIn: true });
-    expect(await screen.findByRole('heading', { name: 'Send' })).toBeInTheDocument();
-    expect(screen.getByText('This screen is not available yet.')).toBeInTheDocument();
-  });
-
   it('a failed row strikes through the amount and says no money moved (AC-4)', async () => {
     await renderApp('/', { server: server(), signedIn: true });
     const amount = await screen.findByTestId('tx-amount');

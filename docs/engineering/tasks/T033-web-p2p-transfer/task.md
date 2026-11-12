@@ -3,10 +3,10 @@
 | Field        | Value |
 |--------------|-------|
 | ID           | T033 |
-| Status       | Ready |
+| Status       | Done |
 | Created      | 2026-11-12 |
 | Branch       | `task/T033-web-p2p-transfer` |
-| Depends on   | T030, T031, T032 (AmountField, ConfirmDialog, useIdempotentMutation) |
+| Depends on   | T030, T031, T032 (AmountField, ConfirmDialog, useIdempotentRequest) |
 | PRDs         | PRD-005 §5.5 (UI-BR-27..30), UI-BR-21/24/26; PRD-004 (P2P-BR-5 masked name) |
 | TDRs         | TDR-005, TDR-019, TDR-020 |
 | Docs changed | PRD-005 §5.5 (new rules UI-BR-27..30) |
@@ -28,10 +28,10 @@ PRD-005 UI-BR-27..30.
 ### Modules and files
 | Path | Change |
 |------|--------|
-| `web/src/app/router.tsx` | Real `/send` route (remove T031 placeholder). Supports `/send?to=+2010…` prefill (from a future contact link; harmless now). |
+| `web/src/app/routes.tsx` | Real `/send` route (T031 placeholder page and strings removed). Supports `/send?to=+2010…` prefill (from a future contact link; harmless now). |
 | `web/src/features/transfer/SendPage.tsx` | Step state machine `recipient → amount → confirm → result`; a step indicator "Step n of 3" (`aria-live`). |
 | `web/src/features/transfer/{RecipientStep,AmountStep,ConfirmStep,ResultView}.tsx` | Steps. |
-| `web/src/features/transfer/hooks.ts` | `useRecipientPreview()` = mutation-style query on `GET /v1/recipients?phone=` (encoded by openapi-fetch; `+` → `%2B` — asserted in a test); `useSendTransfer()` via `useIdempotentMutation`. |
+| `web/src/features/transfer/hooks.ts` | `useRecipientPreview()` = mutation-style query on `GET /v1/recipients?phone=` (encoded by openapi-fetch; `+` → `%2B` — asserted in a test); `useSendTransfer()` used through `useIdempotentRequest('transfer', …)`. |
 | `web/src/lib/validation.ts` | `validateNote` (≤ 140 chars after trim, counted as code points). |
 | `web/src/i18n/en.ts` | Strings; `en.errors` adds `RECIPIENT_NOT_FOUND`, `SELF_TRANSFER_NOT_ALLOWED`, `RECIPIENT_LIMIT_EXCEEDED`, `INVALID_NOTE`. |
 | `web/e2e/transfer.spec.ts` | E2E below. |
@@ -52,7 +52,8 @@ None changed. Used: `GET /v1/recipients`, `POST /v1/transfers` (`Idempotency-Key
   balance."), note valid. Back returns to step 1 keeping the phone.
 - **Step 3 (UI-BR-29):** summary; Send → `POST /v1/transfers` body `{recipient_phone,
   amount_minor, currency: 'EGP', note?}` (note omitted when empty after trim). Idempotency per
-  UI-BR-24; Back from step 3 resets the key.
+  UI-BR-24: a key is reused only for exactly the same request after a retryable failure;
+  Back and a changed value gives a new key.
 - **Result (UI-BR-30):** 201 (or replay) → "Sent EGP X to {masked}", "New balance: EGP …"
   from `balance_after_minor`, links "View transaction" and "Send again" (fresh flow).
   `invalidateMoney` after success. `RECIPIENT_NOT_FOUND` → back to step 1 with the message;
@@ -65,23 +66,23 @@ None changed. Used: `GET /v1/recipients`, `POST /v1/transfers` (`Idempotency-Key
 Contacts / recent recipients, QR codes, requesting money, scheduled transfers.
 
 ## Acceptance Criteria
-- [ ] AC-1 — Given two registered users A (funded) and B, when A enters B's phone as `0100…`, then the preview shows B's masked name; A sends EGP 50 with note "lunch"; the result shows the new balance; both histories show the transfer (e2e).
-- [ ] AC-2 — Unknown phone → "No wallet uses this number."; own phone → "You can't send money to yourself."; bad format → field error with no request (component + e2e for unknown/own).
-- [ ] AC-3 — Amount above the available balance is rejected in the form; note of 141 chars rejected, 140 accepted (component, unit for `validateNote`).
-- [ ] AC-4 — The preview request encodes `+` as `%2B` (component asserting the URL).
-- [ ] AC-5 — Network error / 503 on Send → Try again resends with the same `Idempotency-Key`; Back + change amount uses a new key (component).
-- [ ] AC-6 — 422 `INSUFFICIENT_FUNDS` (race: balance dropped after step 2), `DAILY_LIMIT_EXCEEDED`, `RECIPIENT_LIMIT_EXCEEDED`, `AMOUNT_OUT_OF_RANGE` go back to step 2 with the right message; `RECIPIENT_NOT_FOUND` goes to step 1 (component).
-- [ ] AC-7 — Frozen sender sees the frozen banner on `/send` (e2e via internal freeze); a stale submit returning 403 `WALLET_FROZEN` shows the message (component).
-- [ ] AC-8 — Send button disabled while in flight; double-click sends one request (component). E2E: double click results in exactly one transfer in history.
-- [ ] AC-9 — Each step is keyboard usable; the step change is announced; fields have labels (component).
-- [ ] AC-10 — `make web-lint web-test web-build web-e2e` pass; CI green.
+- [x] AC-1 — Given two registered users A (funded) and B, when A enters B's phone as `0100…`, then the preview shows B's masked name; A sends EGP 50 with note "lunch"; the result shows the new balance; both histories show the transfer (e2e).
+- [x] AC-2 — Unknown phone → "No wallet uses this number."; own phone → "You can't send money to yourself."; bad format → field error with no request (component + e2e for unknown/own).
+- [x] AC-3 — Amount above the available balance is rejected in the form; note of 141 chars rejected, 140 accepted (component, unit for `validateNote`).
+- [x] AC-4 — The preview request encodes `+` as `%2B` (component asserting the URL).
+- [x] AC-5 — Network error / 503 on Send → Try again resends with the same `Idempotency-Key`; Back + change amount uses a new key (component).
+- [x] AC-6 — 422 `INSUFFICIENT_FUNDS` (race: balance dropped after step 2), `DAILY_LIMIT_EXCEEDED`, `RECIPIENT_LIMIT_EXCEEDED`, `AMOUNT_OUT_OF_RANGE` go back to step 2 with the right message; `RECIPIENT_NOT_FOUND` goes to step 1 (component).
+- [x] AC-7 — Frozen sender sees the frozen banner on `/send` (e2e via internal freeze); a stale submit returning 403 `WALLET_FROZEN` shows the message (component).
+- [x] AC-8 — Send button disabled while in flight; double-click sends one request (component). E2E: double click results in exactly one transfer in history.
+- [x] AC-9 — Each step is keyboard usable; the step change is announced; fields have labels (component).
+- [x] AC-10 — `make web-lint web-test web-build web-e2e` pass; CI green.
 
 ## Test Plan
 | AC | Type | Test |
 |----|------|------|
 | 1 | e2e | `e2e/transfer.spec.ts` "happy path" |
-| 2 | component + e2e | `RecipientStep.test.tsx`; e2e "unknown / self" |
-| 3 | unit + component | `validation.test.ts`, `AmountStep.test.tsx` |
+| 2 | component + e2e | `SendPage.test.tsx` (step 1 cases); e2e "unknown / self" |
+| 3 | unit + component | `validation.test.ts`, `SendPage.test.tsx` (step 2 cases) |
 | 4, 5, 6, 8, 9 | component | `SendPage.test.tsx` |
 | 7 | component + e2e | e2e "frozen sender" |
 | 10 | CI | PR checks |
@@ -102,3 +103,5 @@ Contacts / recent recipients, QR codes, requesting money, scheduled transfers.
 | Date | Status | Note |
 |------|--------|------|
 | 2026-11-12 | Ready | Planned; implementation after T032 |
+| 2026-11-12 | In Review | Implemented; review round 1 (review.md) |
+| 2026-11-12 | Done | Review fixes applied; checks pass locally |
