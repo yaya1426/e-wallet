@@ -46,6 +46,7 @@ Spec-driven development: **nothing is implemented until the relevant PRD and TDR
 | [TDR-018](tdrs/TDR-018-mvp-sessions-and-operator-access.md) | MVP: client IP, register limit, refresh tokens, password reset, operator key | Accepted |
 | [TDR-019](tdrs/TDR-019-web-frontend-stack-and-layout.md) | Web front-end: React + TS + Vite in `web/`, same-origin hosting | Accepted (2026-11-12) |
 | [TDR-020](tdrs/TDR-020-browser-session-handling.md) | Browser sessions: in-memory access token, rotating refresh with Web Locks, CSP | Accepted (2026-11-12) |
+| [TDR-022](tdrs/TDR-022-operator-console-key-handling.md) | Operator console: key in sessionStorage, idle lock, separate ops client | Accepted (2026-11-12) |
 
 ## Engineering
 

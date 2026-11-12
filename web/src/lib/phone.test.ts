@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeEgyptianMobile } from './phone';
+import { formatPhone, normalizeEgyptianMobile } from './phone';
 
 describe('normalizeEgyptianMobile (AC-2, PRD-005 UI-BR-2)', () => {
   it.each([
@@ -27,5 +27,12 @@ describe('normalizeEgyptianMobile (AC-2, PRD-005 UI-BR-2)', () => {
     '00201001234567',
   ])('rejects %j', (input) => {
     expect(normalizeEgyptianMobile(input)).toBeNull();
+  });
+});
+
+describe('formatPhone', () => {
+  it('groups an Egyptian E.164 number', () => {
+    expect(formatPhone('+201001234567')).toBe('+20 100 123 4567');
+    expect(formatPhone('weird')).toBe('weird');
   });
 });
