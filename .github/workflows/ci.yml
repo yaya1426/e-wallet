@@ -65,3 +65,44 @@ jobs:
         run: docker compose logs
       - if: always()
         run: make down
+
+  # Web app (TDR-019 §4): generated API types, lint, type check, unit/component tests, build.
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: make web-install
+      - run: make web-ci
+
+  # Browser tests of the web app against the compose stack.
+  web-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: make up
+      - run: make web-install
+      - run: npx --prefix web playwright install --with-deps chromium
+      - run: make web-e2e
+        timeout-minutes: 10
+        env:
+          CI: 'true'
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: web/playwright-report
+          retention-days: 7
+      - if: failure()
+        run: docker compose logs
+      - if: always()
+        run: make down

@@ -19,6 +19,7 @@ Spec-driven development: **nothing is implemented until the relevant PRD and TDR
 | [PRD-002](prds/PRD-002-top-up.md) | Top-up (Bank → Wallet) | Accepted |
 | [PRD-003](prds/PRD-003-withdrawal.md) | Withdrawal (Wallet → Bank) | Accepted |
 | [PRD-004](prds/PRD-004-p2p-transfer.md) | P2P Transfer (Wallet → Wallet) | Accepted |
+| [PRD-005](prds/PRD-005-web-app.md) | Web App (wallet user UI + operator console) | Accepted (2026-11-12) |
 
 ## Technical Decisions
 
@@ -43,6 +44,8 @@ Spec-driven development: **nothing is implemented until the relevant PRD and TDR
 | [TDR-016](tdrs/TDR-016-discrepancy-module.md) | `discrepancy` module owns reconciliation discrepancies | Accepted |
 | [TDR-017](tdrs/TDR-017-api-conventions-addendum.md) | API addendum: 413, 429, idempotency lock wait → 409 | Accepted |
 | [TDR-018](tdrs/TDR-018-mvp-sessions-and-operator-access.md) | MVP: client IP, register limit, refresh tokens, password reset, operator key | Accepted |
+| [TDR-019](tdrs/TDR-019-web-frontend-stack-and-layout.md) | Web front-end: React + TS + Vite in `web/`, same-origin hosting | Accepted (2026-11-12) |
+| [TDR-020](tdrs/TDR-020-browser-session-handling.md) | Browser sessions: in-memory access token, rotating refresh with Web Locks, CSP | Accepted (2026-11-12) |
 
 ## Engineering
 
