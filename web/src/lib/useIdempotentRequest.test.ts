@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, NETWORK_ERROR } from '@/api/errors';
-import { isRetryable, newIdempotencyKey, useIdempotentRequest } from './useIdempotentRequest';
+import { isRetryable, newIdempotencyKey, STORED_KEY_TTL_MS, useIdempotentRequest } from './useIdempotentRequest';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -99,5 +99,21 @@ describe('useIdempotentRequest (UI-BR-24)', () => {
     expect(window.sessionStorage.getItem('ewallet.pendingKey.topUp')).not.toBeNull();
     await act(() => result.current.retry());
     expect(window.sessionStorage.getItem('ewallet.pendingKey.topUp')).toBeNull();
+  });
+
+  it('a key stored by an earlier visit expires after 10 minutes (a deliberate repeat gets a new key)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const send = vi.fn().mockRejectedValueOnce(new ApiError(0, NETWORK_ERROR)).mockResolvedValue('ok');
+      const first = renderHook(() => useIdempotentRequest('transfer', send));
+      await act(() => first.result.current.submit(100));
+      first.unmount();
+      vi.setSystemTime(Date.now() + STORED_KEY_TTL_MS + 1_000);
+      const later = renderHook(() => useIdempotentRequest('transfer', send));
+      await act(() => later.result.current.submit(100));
+      expect(send.mock.calls[1]?.[1]).not.toBe(send.mock.calls[0]?.[1]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -32,14 +32,26 @@ interface Held<V> {
   key: string;
   vars: V;
   json: string;
+  /** When the key was made (ms). A key left in storage by an earlier visit expires (see below). */
+  at: number;
 }
+
+/**
+ * A key kept in sessionStorage is reused by a later visit only for this long: long enough to
+ * retry an ambiguous failure after a reload, short enough that a deliberate identical repeat
+ * (common for P2P) later in the day is not silently answered with the old replay.
+ */
+export const STORED_KEY_TTL_MS = 10 * 60_000;
 
 const storageKey = (scope: string) => `ewallet.pendingKey.${scope}`;
 
 function readStored<V>(scope: string): Held<V> | null {
   try {
     const raw = window.sessionStorage.getItem(storageKey(scope));
-    return raw ? (JSON.parse(raw) as Held<V>) : null;
+    if (!raw) return null;
+    const held = JSON.parse(raw) as Held<V>;
+    if (typeof held.at !== 'number' || Date.now() - held.at > STORED_KEY_TTL_MS) return null;
+    return held;
   } catch {
     return null;
   }
@@ -99,7 +111,7 @@ export function useIdempotentRequest<V, R>(scope: string, send: (vars: V, key: s
       if (current && current.json === json) {
         held.current = current;
       } else {
-        hold({ key: newIdempotencyKey(), vars, json });
+        hold({ key: newIdempotencyKey(), vars, json, at: Date.now() });
       }
       const h = held.current as Held<V>;
       return run(h.vars, h.key);
