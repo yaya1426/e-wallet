@@ -154,10 +154,11 @@ func (s *Service) Login(ctx context.Context, phone, password string) (Session, e
 	return s.startSession(ctx, s.db.Pool(), row.ID)
 }
 
-// Authenticate verifies an access token and returns its user's ID. An invalid token or an
-// unknown user returns ErrUnauthenticated; a disabled user returns ErrUserDisabled.
+// Authenticate verifies an access token and returns its user's ID. An invalid token, an
+// unknown user or a token issued before the user's last password change (TDR-021 §1) returns
+// ErrUnauthenticated; a disabled user returns ErrUserDisabled.
 func (s *Service) Authenticate(ctx context.Context, token string) (uuid.UUID, error) {
-	userID, err := s.tokens.verify(token)
+	userID, issuedAt, err := s.tokens.verify(token)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -170,6 +171,9 @@ func (s *Service) Authenticate(ctx context.Context, token string) (uuid.UUID, er
 	}
 	if user.Status == StatusDisabled {
 		return uuid.Nil, ErrUserDisabled
+	}
+	if issuedBeforePasswordChange(issuedAt, user.PasswordChangedAt) {
+		return uuid.Nil, fmt.Errorf("%w: token issued before the last password change", ErrUnauthenticated)
 	}
 	return userID, nil
 }
@@ -218,4 +222,12 @@ func (s *Service) GetUserByPhone(ctx context.Context, q Querier, phone string) (
 		return User{}, fmt.Errorf("identity: get user by phone: %w", err)
 	}
 	return toUser(row), nil
+}
+
+// issuedBeforePasswordChange reports whether a token issued at iat predates the password
+// change at changedAt (nil = never changed). JWT iat has whole-second precision, so the
+// change is compared at whole seconds too: a token minted in the same second survives
+// (TDR-021 §1 accepts that window).
+func issuedBeforePasswordChange(iat time.Time, changedAt *time.Time) bool {
+	return changedAt != nil && iat.Before(changedAt.Truncate(time.Second))
 }

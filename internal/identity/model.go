@@ -27,6 +27,8 @@ type User struct {
 	FullName  string
 	Status    Status
 	CreatedAt time.Time
+	// PasswordChangedAt is the last password change, nil if never (TDR-021 §1).
+	PasswordChangedAt *time.Time
 }
 
 // RegisterInput is a registration request.

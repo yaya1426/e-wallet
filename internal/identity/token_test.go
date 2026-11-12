@@ -31,9 +31,10 @@ func TestTokens_IssueAndVerify(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, uuid.Version(7), jti.Version())
 
-	got, err := tk.verify(token.Token)
+	got, iat, err := tk.verify(token.Token)
 	require.NoError(t, err)
 	assert.Equal(t, userID, got)
+	assert.Equal(t, claims.IssuedAt.Time, iat, "verify returns iat")
 }
 
 func TestTokens_VerifyRejects(t *testing.T) {
@@ -64,15 +65,38 @@ func TestTokens_VerifyRejects(t *testing.T) {
 	}).SignedString([]byte(testSecret))
 	require.NoError(t, err)
 
+	noIat, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+		Subject: uuid.NewString(), ExpiresAt: jwt.NewNumericDate(clk.Now().Add(time.Hour)),
+	}).SignedString([]byte(testSecret))
+	require.NoError(t, err)
+
 	for name, token := range map[string]string{
 		"garbage": "not.a.jwt", "empty": "", "other secret": otherSigned.Token,
 		"alg none": none, "alg HS512": hs512, "no exp": noExp, "sub not a uuid": badSub,
+		"no iat (T029)": noIat,
 	} {
-		_, err := tk.verify(token)
+		_, _, err := tk.verify(token)
 		assert.ErrorIs(t, err, ErrUnauthenticated, name)
 	}
 
 	clk.Advance(15*time.Minute + time.Second)
-	_, err = tk.verify(valid.Token)
+	_, _, err = tk.verify(valid.Token)
 	assert.ErrorIs(t, err, ErrUnauthenticated, "expired")
+}
+
+// T029 AC-1, AC-2: the cut-off is compared at whole seconds (JWT iat precision).
+func TestIssuedBeforePasswordChange(t *testing.T) {
+	changed := time.Date(2026, 11, 12, 10, 0, 5, 700_000_000, time.UTC)
+	for name, tc := range map[string]struct {
+		iat     time.Time
+		changed *time.Time
+		want    bool
+	}{
+		"never changed":             {iat: changed.Add(-time.Hour), changed: nil, want: false},
+		"issued a second before":    {iat: time.Date(2026, 11, 12, 10, 0, 4, 0, time.UTC), changed: &changed, want: true},
+		"issued in the same second": {iat: time.Date(2026, 11, 12, 10, 0, 5, 0, time.UTC), changed: &changed, want: false},
+		"issued after":              {iat: time.Date(2026, 11, 12, 10, 0, 6, 0, time.UTC), changed: &changed, want: false},
+	} {
+		assert.Equal(t, tc.want, issuedBeforePasswordChange(tc.iat, tc.changed), name)
+	}
 }

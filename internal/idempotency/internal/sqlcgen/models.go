@@ -165,12 +165,13 @@ type Transaction struct {
 }
 
 type User struct {
-	ID           uuid.UUID
-	PhoneE164    string
-	FullName     string
-	PasswordHash string
-	Status       string
-	CreatedAt    time.Time
+	ID                uuid.UUID
+	PhoneE164         string
+	FullName          string
+	PasswordHash      string
+	Status            string
+	CreatedAt         time.Time
+	PasswordChangedAt pgtype.Timestamptz
 }
 
 type Wallet struct {
