@@ -122,7 +122,8 @@ export function useTransaction(id: string, opts: { pollEveryMs?: number; pollFor
     queryFn: async () =>
       unwrap(await api.GET('/v1/transactions/{id}', { params: { path: { id } } })) as TransactionItem,
     refetchOnWindowFocus: true,
-    refetchInterval: (q) => poll(q.state.data ? isPending(q.state.data.status) : false),
+    // No data yet (e.g. the first GET failed) counts as pending: keep trying inside the window.
+    refetchInterval: (q) => poll(q.state.data ? isPending(q.state.data.status) : true),
   });
   const items = useMemo(() => (query.data ? [query.data] : undefined), [query.data]);
   useRefreshWalletWhenSettled(items);

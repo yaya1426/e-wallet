@@ -1,9 +1,10 @@
-import type { ButtonHTMLAttributes } from 'react';
+import type { ButtonHTMLAttributes, Ref } from 'react';
 import { Spinner } from './Spinner';
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
   variant?: 'primary' | 'secondary';
+  ref?: Ref<HTMLButtonElement>;
 }
 
 export function Button({ loading = false, variant = 'primary', disabled, children, className = '', ...rest }: Props) {

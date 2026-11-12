@@ -5,6 +5,8 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { RegisterPage } from '@/features/auth/RegisterPage';
 import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
 import { HistoryPage } from '@/features/home/HistoryPage';
+import { BankAccountPage } from '@/features/money/BankAccountPage';
+import { TopUpPage, WithdrawPage } from '@/features/money/MoneyFlowPage';
 import { HomePage } from '@/features/home/HomePage';
 import { TransactionDetailPage } from '@/features/home/TransactionDetailPage';
 import { NotFoundPage } from '@/features/NotFoundPage';
@@ -21,9 +23,9 @@ export const routes: RouteObject[] = [
       { path: '/', element: <HomePage /> },
       { path: '/history', element: <HistoryPage /> },
       { path: '/transactions/:id', element: <TransactionDetailPage /> },
-      { path: '/bank-account', element: <ComingSoonPage title={en.nav.bankAccount} /> },
-      { path: '/top-up', element: <ComingSoonPage title={en.nav.topUp} /> },
-      { path: '/withdraw', element: <ComingSoonPage title={en.nav.withdraw} /> },
+      { path: '/bank-account', element: <BankAccountPage /> },
+      { path: '/top-up', element: <TopUpPage /> },
+      { path: '/withdraw', element: <WithdrawPage /> },
       { path: '/send', element: <ComingSoonPage title={en.nav.send} /> },
     ],
   },
