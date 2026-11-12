@@ -63,6 +63,6 @@ Every unit of work is a task folder `TNNN-<slug>/` (e.g. `T001-project-bootstrap
 | [T031](T031-web-wallet-home-history/task.md) | Web: wallet home and transaction history (PRD-005 area 2) | Done |
 | [T032](T032-web-bank-topup-withdrawal/task.md) | Web: bank account, top-up and withdrawal (PRD-005 area 3) | Done |
 | [T033](T033-web-p2p-transfer/task.md) | Web: P2P transfer with recipient preview (PRD-005 area 4) | Done |
-| [T034](T034-web-operator-console/task.md) | Web: operator console (PRD-005 area 5) | Ready |
+| [T034](T034-web-operator-console/task.md) | Web: operator console (PRD-005 area 5) | Done |
 
 Phase-1 order and dependencies: see the [roadmap](../roadmap.md). Phase 2 is planned task by task (T021 onward); T021–T023 cover reconciliation (P2-2/P2-3).

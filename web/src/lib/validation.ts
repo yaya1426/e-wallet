@@ -35,3 +35,14 @@ export function noteLength(note: string): number {
 export function validateNote(note: string): ValidationKey | null {
   return noteLength(note) > NOTE_MAX ? 'noteLength' : null;
 }
+
+/** Any UUID in the canonical 8-4-4-4-12 hex form (the API's wallet and discrepancy IDs). */
+export function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());
+}
+
+/** Discrepancy resolution note: 1 to 500 characters after trimming (Go TrimSpace + RuneCount). */
+export function validateResolutionNote(note: string): boolean {
+  const n = [...note.trim()].length;
+  return n >= 1 && n <= 500;
+}
