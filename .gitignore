@@ -21,3 +21,9 @@ coverage*
 .DS_Store
 .idea/
 .vscode/
+
+# Web app (TDR-019)
+/web/node_modules/
+/web/dist/
+/web/playwright-report/
+/web/test-results/

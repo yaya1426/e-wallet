@@ -40,7 +40,7 @@ from bank delays, network failures, duplicate requests and lost webhooks.
 - KYC / identity verification, AML screening, regulatory reporting.
 - Cards, merchants, QR payments, bill payments.
 - Fees, cashback, interest.
-- Mobile / web front-end. We deliver an HTTP JSON API only.
+- Mobile front-end. (The web front-end was added on 2026-11-12 by PRD-005.)
 - Microservices or a message broker (Kafka, Pub/Sub, RabbitMQ). Possible future decision (TDR-006).
 - Notifications (SMS / push / email).
 
@@ -49,7 +49,7 @@ from bank delays, network failures, duplicate requests and lost webhooks.
 | Persona | Description |
 |---------|-------------|
 | **Wallet user** | An individual with one EGP wallet who tops up, withdraws and sends money. |
-| **Operator** (internal) | Ops/finance staff who look at failed transactions and reconciliation reports. In this phase the operator works through read-only endpoints and the database; no admin UI. |
+| **Operator** (internal) | Ops/finance staff who look at failed transactions and reconciliation reports. Works through the `/internal/v1` API (TDR-018 §5) and, from PRD-005, the operator console in the web app. |
 | **External bank** (system) | The company's bank. Holds the company's settlement account, pulls money from users' bank accounts (top-up), pushes money to them (withdrawal), and notifies us by webhook. Simulated in this phase. |
 
 ## 5. Core Business Rules (apply to every flow)

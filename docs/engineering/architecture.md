@@ -44,6 +44,7 @@ the company settlement account at the bank. Reconciliation proves this daily.
 ```mermaid
 flowchart TB
     user["👤 Wallet User"]
+    web["🟩 Web App<br/><b>web/ (React SPA)</b><br/>static files, same origin"]
     operator["👤 Operator"]
 
     subgraph ewallet["E-Wallet System"]
@@ -56,7 +57,8 @@ flowchart TB
         banksim["⬜ Bank Simulator<br/><b>Go binary: cmd/banksim</b><br/>dev/test only"]
     end
 
-    user -- "HTTPS JSON /v1" --> svc
+    user -- "browser" --> web
+    web -- "HTTPS JSON /v1, /internal/v1 (same origin)" --> svc
     operator -- "HTTPS JSON /internal/v1" --> svc
     svc -- "SQL (pgx pool)" --> db
     svc -- "HTTP: POST /v1/debits, /v1/payouts,<br/>GET /v1/operations, /v1/statements" --> banksim
@@ -65,6 +67,7 @@ flowchart TB
 
 | Container | Technology | Responsibility | Decided in |
 |-----------|-----------|----------------|-----------|
+| Web App | TypeScript, React, Vite (static files) | User screens and operator console; a client of the API | PRD-005, TDR-019, TDR-020 |
 | Wallet Service | Go, `net/http`, pgx, goroutines | All business logic, API, background processing | TDR-001, TDR-012 |
 | PostgreSQL | PostgreSQL 18 | System of record (ledger) and durable queues (outbox/inbox) | TDR-002 |
 | Bank Simulator | Go, in-memory state | Stands in for the external bank; scripted scenarios | TDR-008 |
