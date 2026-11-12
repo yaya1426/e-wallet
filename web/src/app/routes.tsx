@@ -28,5 +28,7 @@ export const routes: RouteObject[] = [
       { path: '/send', element: <SendPage /> },
     ],
   },
+  // The operator console has its own credential (TDR-022) and loads as a separate chunk.
+  { path: '/ops/*', lazy: async () => ({ Component: (await import('@/features/ops/OpsRoutes')).default }) },
   { path: '*', element: <NotFoundPage /> },
 ];
